@@ -212,6 +212,8 @@ if [ -z "$SERENITY_MACHINE" ]; then
         -device i82801b11-bridge,bus=bridge1,id=bridge2 -device sdhci-pci,bus=bridge2
         -device i82801b11-bridge,id=bridge3 -device sdhci-pci,bus=bridge3
         -device ich9-ahci,bus=bridge3
+        -drive file=nvm.img,format=raw,if=none,id=nvm
+        -device nvme,serial=deadbeef,drive=nvm,bus=bridge3
         -chardev stdio,id=stdout,mux=on
         "
     fi

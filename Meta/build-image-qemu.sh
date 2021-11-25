@@ -77,6 +77,12 @@ if [ -f _disk_image ]; then
     fi
 fi
 
+if [ -f nvm.img ]; then
+  echo "reusing nvm.img"
+else
+  qemu-img create -f raw nvm.img 1G
+fi
+
 if [ $USE_EXISTING -eq 1 ];  then
     OLD_DISK_SIZE_BYTES=$(wc -c < _disk_image)
     if [ $DISK_SIZE_BYTES -gt "$OLD_DISK_SIZE_BYTES" ]; then

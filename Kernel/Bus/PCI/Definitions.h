@@ -73,6 +73,7 @@ namespace MassStorage {
 enum class SubclassID {
     IDEController = 0x1,
     SATAController = 0x6,
+    NVMEController = 0x8,
 };
 enum class SATAProgIF {
     AHCI = 0x1,

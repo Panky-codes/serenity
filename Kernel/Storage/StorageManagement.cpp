@@ -61,6 +61,12 @@ UNMAP_AFTER_INIT void StorageManagement::enumerate_controllers(bool force_pio)
                 m_controllers.append(AHCIController::initialize(device_identifier));
             }
         });
+        PCI::enumerate([&](PCI::DeviceIdentifier const& device_identifier) {
+            if (device_identifier.class_code().value() == to_underlying(PCI::ClassID::MassStorage)
+                && device_identifier.subclass_code().value() == to_underlying(PCI::MassStorage::SubclassID::NVMEController)) {
+                dbgln("NVMe controller found");
+            }
+        });
     }
     m_controllers.append(RamdiskController::initialize());
 }
