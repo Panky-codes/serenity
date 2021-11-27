@@ -98,6 +98,7 @@ set(KERNEL_SOURCES
     Storage/Partition/GUIDPartitionTable.cpp
     Storage/Partition/MBRPartitionTable.cpp
     Storage/Partition/PartitionTable.cpp
+    Storage/NVME/NVMEController.cpp
     Storage/StorageDevice.cpp
     Storage/RamdiskController.cpp
     Storage/RamdiskDevice.cpp

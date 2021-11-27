@@ -15,6 +15,7 @@
 #include <Kernel/Panic.h>
 #include <Kernel/Storage/ATA/AHCIController.h>
 #include <Kernel/Storage/ATA/IDEController.h>
+#include <Kernel/Storage/NVME/NVMEController.h>
 #include <Kernel/Storage/Partition/EBRPartitionTable.h>
 #include <Kernel/Storage/Partition/GUIDPartitionTable.h>
 #include <Kernel/Storage/Partition/MBRPartitionTable.h>
@@ -65,6 +66,7 @@ UNMAP_AFTER_INIT void StorageManagement::enumerate_controllers(bool force_pio)
             if (device_identifier.class_code().value() == to_underlying(PCI::ClassID::MassStorage)
                 && device_identifier.subclass_code().value() == to_underlying(PCI::MassStorage::SubclassID::NVMEController)) {
                 dbgln("NVMe controller found");
+                auto val = NVMEController::initialize(device_identifier);
             }
         });
     }
