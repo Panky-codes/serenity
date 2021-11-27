@@ -4,6 +4,7 @@
 * SPDX-License-Identifier: BSD-2-Clause
 */
 #pragma once
+#include <AK/Types.h>
 
 // NVMe spec 1.4, section 3.1
 #define REG_SQ0TDBL_START 0x1000
@@ -53,3 +54,35 @@
 #define OP_ADMIN_IDENTIFY 0x6
 #define OP_NVME_WRITE 0x1
 #define OP_NVME_READ 0x0
+
+struct nvme_completion {
+    LittleEndian<u32> cmd_spec;
+    LittleEndian<u32> res;
+
+    LittleEndian<u16> sq_head; /* how much of this queue may be reclaimed */
+    LittleEndian<u16> sq_id;   /* submission queue that generated this entry */
+
+    u16 command_id;           /* of the command which completed */
+    LittleEndian<u16> status; /* did the command fail, and if so, why? */
+};
+
+struct data_ptr_t {
+    LittleEndian<u64> prp1;
+    LittleEndian<u64> prp2;
+};
+
+struct nvme_submission {
+    LittleEndian<u8> op;
+    LittleEndian<u8> flags;
+    LittleEndian<u16> cmdid;
+    LittleEndian<u32> nsid;
+    LittleEndian<u64> rsvd;
+    LittleEndian<u64> meta_ptr;
+    struct data_ptr_t data_ptr;
+    LittleEndian<u32> cdw10;
+    LittleEndian<u32> cdw11;
+    LittleEndian<u32> cdw12;
+    LittleEndian<u32> cdw13;
+    LittleEndian<u32> cdw14;
+    LittleEndian<u32> cdw15;
+};

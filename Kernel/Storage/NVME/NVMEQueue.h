@@ -42,6 +42,6 @@ private:
     bool m_admin_queue;
     Spinlock m_cq_lock;
     Spinlock m_sq_lock;
-    NonnullRefPtr<NVMEController> m_controller;
+    RefPtr<NVMEController> m_controller;
 };
 }

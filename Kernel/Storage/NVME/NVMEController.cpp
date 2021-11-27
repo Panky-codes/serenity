@@ -11,12 +11,9 @@
 #include <Kernel/Sections.h>
 #include <Kernel/Storage/NVME/NVMEController.h>
 
+
 namespace Kernel {
 
-NonnullRefPtr<NVMEQueue> NVMEQueue::create(const NVMEController& controller, u16 qid)
-{
-    return adopt_ref(*new NVMEQueue(controller, qid));
-}
 NonnullRefPtr<NVMEController> NVMEController::initialize(const Kernel::PCI::DeviceIdentifier& device_identifier)
 {
     return adopt_ref(*new NVMEController(device_identifier));
