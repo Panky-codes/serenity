@@ -211,11 +211,18 @@ if [ -z "$SERENITY_MACHINE" ]; then
         -device pci-bridge,chassis_nr=1,id=bridge1 -device $SERENITY_ETHERNET_DEVICE_TYPE,bus=bridge1
         -device i82801b11-bridge,bus=bridge1,id=bridge2 -device sdhci-pci,bus=bridge2
         -device i82801b11-bridge,id=bridge3 -device sdhci-pci,bus=bridge3
-        -device ich9-ahci,bus=bridge3
         -drive file=nvm.img,format=raw,if=none,id=nvm
         -device nvme,serial=deadbeef,drive=nvm,bus=bridge3
         -chardev stdio,id=stdout,mux=on
+        -D /home/panky/SW/OS-Code/serenity/Build/qemu.log
+        -trace pci_nvme*
         "
+        #NVMEFIXME also remove the above a trace and create a neat way of exposing
+        # this trace functionality
+        # NVMEFIXME: For now having this in the same bus
+        # is creating issues. Need to create either a new bridge1
+        # or share interrupts somehow
+        # -device ich9-ahci,bus=bridge3
     fi
 fi
 
