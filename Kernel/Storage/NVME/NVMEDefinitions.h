@@ -5,7 +5,7 @@
  */
 #pragma once
 #include <AK/Types.h>
-
+#include <AK/Endian.h>
 struct nvme_completion;
 struct nvme_submission;
 
@@ -50,6 +50,7 @@ struct nvme_submission;
 //  NVMe spec 1.4: 5.15.1
 #define NVME_IDENTIFY_SIZE 4096
 #define NVME_CNS_ID_ACTIVE_NS 0x2
+#define NVME_CNS_ID_NS 0x0
 
 // OPCODES
 // NVME spec 1.4 Section 5 ADMIN COMMAND SET

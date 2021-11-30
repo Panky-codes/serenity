@@ -100,6 +100,7 @@ set(KERNEL_SOURCES
     Storage/Partition/PartitionTable.cpp
     Storage/NVME/NVMEController.cpp
     Storage/NVME/NVMEQueue.cpp
+    Storage/NVME/NVMENameSpace.cpp
     Storage/StorageDevice.cpp
     Storage/RamdiskController.cpp
     Storage/RamdiskDevice.cpp

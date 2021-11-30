@@ -4,12 +4,15 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 #include "Kernel/StdLib.h"
+#include "NVMEQueue.h"
+
+#include <Kernel/Arch/x86/IO.h>
 #include <Kernel/Storage/NVME/NVMEController.h>
 #include <Kernel/Storage/NVME/NVMEQueue.h>
 
 namespace Kernel {
 // TODO: Move this to generally memory manager
-static ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page)
+ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page)
 {
     dma_buffer_page = MM.allocate_supervisor_physical_page();
     if (dma_buffer_page.is_null())
@@ -121,6 +124,7 @@ bool NVMEQueue::cqe_available()
 }
 void NVMEQueue::update_cqe_head()
 {
+    SpinlockLocker lock(m_cq_lock);
     // To prevent overflow, use a temp variable
     u32 temp_cq_head = cq_head + 1;
     if (cq_head == m_qdepth) {
@@ -138,6 +142,7 @@ bool NVMEQueue::handle_irq(const RegisterState&)
         auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
         ++nr_of_processed_cqes;
         status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
+        dbgln("CQ_HEAD: {} in handle irq", cq_head);
         AK::dbgln("Status field is: {:x}", status);
         update_cqe_head();
     }
@@ -146,9 +151,10 @@ bool NVMEQueue::handle_irq(const RegisterState&)
     }
     return nr_of_processed_cqes ? true : false;
 }
-void NVMEQueue::submit_sqe([[maybe_unused]]const struct nvme_submission& sub)
+void NVMEQueue::submit_sqe(const struct nvme_submission& sub)
 {
     SpinlockLocker lock(m_sq_lock);
+    AK::dbgln("CID in submit_sqe is: {}", sub.cmdid);
     auto* submission_arr = reinterpret_cast<nvme_submission*>(m_sq_dma_region->vaddr().as_ptr());
 
     memcpy(&submission_arr[sq_tail], &sub, sizeof (nvme_submission));
@@ -161,5 +167,24 @@ void NVMEQueue::submit_sqe([[maybe_unused]]const struct nvme_submission& sub)
     }
     AK::full_memory_barrier();
     m_controller->update_sq_doorbell(sq_tail, qid);
+}
+u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
+{
+    auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
+    // TODO: Reading does not need a lock I guess?
+    // For now let's use sq tail as a unique command id.
+    u16 cqe_cid;
+    sub.cmdid = sq_tail;
+    u16 cid = sq_tail;
+    full_memory_barrier();
+    submit_sqe(sub);
+    // FIXME: Probably a sloppy way of doing sync requests. Need to find a better way
+    // Like having a list of callbacks associated with cid
+    do {
+        cqe_cid = completion_arr[cq_head - 1].command_id;
+    } while(cid != cqe_cid);
+
+    auto status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
+    return status;
 }
 }

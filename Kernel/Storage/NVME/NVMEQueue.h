@@ -13,13 +13,17 @@
 #include <Kernel/Bus/PCI/Device.h>
 #include <Kernel/Interrupts/IRQHandler.h>
 #include <Kernel/Locking/Spinlock.h>
+#include <Kernel/Memory/MemoryManager.h>
 #include <Kernel/Storage/NVME/NVMEDefinitions.h>
 
 namespace Kernel {
-
+ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
 class NVMEController;
+// TODO: Change this to Storage controller later
+class NonsenseBaseClass1 : public AK::RefCounted<NonsenseBaseClass1> {
+};
 
-class NVMEQueue : public RefCounted<NVMEQueue>
+class NVMEQueue : public NonsenseBaseClass1
     , public IRQHandler {
 public:
     static NonnullRefPtr<NVMEQueue> create(const NVMEController&, u16 qid, u8 irq);
@@ -27,6 +31,7 @@ public:
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
     void submit_sqe(struct nvme_submission const&);
+    u16 submit_sync_sqe(struct nvme_submission &);
 
 private:
     void setup_admin_queue();
