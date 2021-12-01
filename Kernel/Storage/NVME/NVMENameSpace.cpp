@@ -6,6 +6,8 @@
 #include <AK/NonnullOwnPtr.h>
 #include <Kernel/Storage/NVME/NVMENameSpace.h>
 #include <Kernel/Storage/StorageManagement.h>
+#include "NVMENameSpace.h"
+
 
 namespace Kernel {
 
@@ -26,10 +28,81 @@ NVMENameSpace::NVMENameSpace(NonnullRefPtrVector<NVMEQueue> queues, size_t max_a
     , m_max_addresable_block(max_addresable_block)
     , m_queues(queues)
 {
+    test_rw();
 }
 
-void NVMENameSpace::start_request([[maybe_unused]] AsyncBlockDeviceRequest& request)
+void NVMENameSpace::start_request(AsyncBlockDeviceRequest& request)
 {
+    // TODO: qid 0 is allocated to admin queue
+    auto qid = Processor::current_id() + 1;
+    auto& queue = m_queues.at(qid);
+
+    if (request.request_type() == AsyncBlockDeviceRequest::Read) {
+        queue.read(request, m_nsid, request.block_index(), request.block_count());
+    } else {
+        queue.write(request, m_nsid, request.block_index(), request.block_count());
+    }
+}
+void NVMENameSpace::test_rw()
+{
+    {
+        AK::Array<u8, 4096> buf {};
+        auto index = 4098;
+        buf[2] = 9;
+        buf[563] = 7;
+        auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
+        auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Write, index, 2, uk_buf, 512);
+        if (read_request_or_error.is_error()) {
+            dbgln("NVMENS::read_block({}): try_make_request failed", index);
+            return;
+        }
+        auto read_request = read_request_or_error.release_value();
+        switch (read_request->wait().request_result()) {
+        case AsyncDeviceRequest::Success:
+            break;
+        case AsyncDeviceRequest::Failure:
+            dbgln("NVMENS::read_block({}) IO error", index);
+            break;
+        case AsyncDeviceRequest::MemoryFault:
+            dbgln("NVMENS::read_block({}) EFAULT", index);
+            break;
+        case AsyncDeviceRequest::Cancelled:
+            dbgln("NVMENS::read_block({}) cancelled", index);
+            break;
+        default:
+            VERIFY_NOT_REACHED();
+        }
+    }
+    {
+        AK::Array<u8, 4096> buf {};
+        auto index = 4098;
+        auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
+        auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Read, index, 2, uk_buf, 512);
+        if (read_request_or_error.is_error()) {
+            dbgln("NVMENS::read_block({}): try_make_request failed", index);
+            return;
+        }
+        auto read_request = read_request_or_error.release_value();
+        switch (read_request->wait().request_result()) {
+        case AsyncDeviceRequest::Success:
+            break;
+        case AsyncDeviceRequest::Failure:
+            dbgln("NVMENS::read_block({}) IO error", index);
+            break;
+        case AsyncDeviceRequest::MemoryFault:
+            dbgln("NVMENS::read_block({}) EFAULT", index);
+            break;
+        case AsyncDeviceRequest::Cancelled:
+            dbgln("NVMENS::read_block({}) cancelled", index);
+            break;
+        default:
+            VERIFY_NOT_REACHED();
+        }
+        VERIFY(buf[2] == 9);
+        VERIFY(buf[563] == 7);
+
+    }
+    return;
 }
 
 }

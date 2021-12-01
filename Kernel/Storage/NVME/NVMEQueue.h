@@ -23,7 +23,7 @@ class NVMEController;
 // TODO: Change this to a BASE class later later
 class NonsenseBaseClass1 : public AK::RefCounted<NonsenseBaseClass1> {
 };
-
+class AsyncBlockDeviceRequest;
 class NVMEQueue : public IRQHandler
     , public NonsenseBaseClass1 {
 public:
@@ -33,12 +33,15 @@ public:
     bool handle_irq(const RegisterState&) override;
     void submit_sqe(struct nvme_submission const&);
     u16 submit_sync_sqe(struct nvme_submission&);
+    void read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
+    void write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
 
 private:
     void setup_admin_queue();
     void setup_io_queue();
     bool cqe_available();
     void update_cqe_head();
+    void complete_current_request(u16 status);
 
 private:
     u16 qid;
@@ -56,5 +59,10 @@ private:
     RefPtr<Memory::PhysicalPage> m_cq_dma_page;
     OwnPtr<Memory::Region> m_sq_dma_region;
     RefPtr<Memory::PhysicalPage> m_sq_dma_page;
+    OwnPtr<Memory::Region> m_rw_dma_region;
+    RefPtr<Memory::PhysicalPage> m_rw_dma_page;
+    // Need to add a lock to current request
+    RefPtr<AsyncBlockDeviceRequest> m_current_request;
+
 };
 }

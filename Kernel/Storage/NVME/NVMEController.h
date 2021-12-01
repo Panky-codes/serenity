@@ -66,6 +66,7 @@ public:
 private:
     void identify_and_init_namespaces();
     Tuple<u64, u8> get_ns_features(Array<u8, NVME_IDENTIFY_SIZE>& identify_data_struct);
+    void test_rw_functionality();
 
 private:
     PCI::DeviceIdentifier m_pci_device_id;

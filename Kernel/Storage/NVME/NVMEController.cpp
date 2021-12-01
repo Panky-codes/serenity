@@ -11,6 +11,7 @@
 #include <Kernel/Bus/PCI/API.h>
 #include <Kernel/FileSystem/ProcFS.h>
 #include <Kernel/Sections.h>
+#include <Kernel/Devices/Device.h>
 
 namespace Kernel {
 
@@ -47,7 +48,9 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     VERIFY(m_admin_queue_ready == true);
     // Identify Namespace attributes
     identify_and_init_namespaces();
+//    test_rw_functionality();
 }
+
 void NVMEController::reset_controller()
 {
     volatile u32 cc, csts;
@@ -187,5 +190,10 @@ bool NVMEController::shutdown()
 void NVMEController::complete_current_request([[maybe_unused]]AsyncDeviceRequest::RequestResult result)
 {
     VERIFY_NOT_REACHED();
+}
+void NVMEController::test_rw_functionality()
+{
+    auto& ns = m_namespaces.at(0);
+    ns.test_rw();
 }
 }
