@@ -8,15 +8,7 @@
 #include <Kernel/Storage/StorageManagement.h>
 
 namespace Kernel {
-// static NonnullRefPtr<NVMENameSpace> create(NonnullRefPtrVector<NVMEQueue> queues, u16 nsid, size_t storage_size, size_t lba_size)
-//{
-//     auto minor_number = StorageManagement::minor_number();
-//     auto major_number = StorageManagement::major_number();
-//     // TODO: For now we are assuming only one controller is there. Name format nvme<ctrlid>n<nsid>
-//     auto device_name = String::formatted("nvme0n{:d}", nsid);
-//     auto device_name_kstring = KString::must_create(device_name.view());
-//     return adopt_ref(*new NVMENameSpace(queues, storage_size, lba_size, major_number, minor_number, move(device_name_kstring)));
-// }
+
 NonnullRefPtr<NVMENameSpace> NVMENameSpace::create(NonnullRefPtrVector<NVMEQueue> queues, u16 nsid, size_t storage_size, size_t lba_size)
 {
     auto minor_number = StorageManagement::minor_number();

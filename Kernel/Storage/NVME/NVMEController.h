@@ -18,17 +18,22 @@
 #include <Kernel/Storage/StorageController.h>
 
 namespace Kernel {
-// TODO: Change this to Storage controller later
-class NonsenseBaseClass : public AK::RefCounted<NonsenseBaseClass> {
-};
 
 class NVMEController : public PCI::Device
-    , public NonsenseBaseClass {
+    , public StorageController{
     AK_MAKE_ETERNAL
 public:
     static NonnullRefPtr<NVMEController> initialize(PCI::DeviceIdentifier const&);
     explicit NVMEController(PCI::DeviceIdentifier const&);
+    RefPtr<StorageDevice> device(u32 index) const override;
+    size_t devices_count() const override;
 
+protected:
+    bool reset() override;
+    bool shutdown() override;
+    void complete_current_request(AsyncDeviceRequest::RequestResult result) override;
+
+public:
     void reset_controller();
     void start_controller();
     u32 get_admin_q_dept();
@@ -68,5 +73,6 @@ private:
     NonnullRefPtrVector<NVMENameSpace> m_namespaces;
     OwnPtr<Memory::Region> m_controller_regs;
     bool m_admin_queue_ready;
+    size_t m_device_count;
 };
 }

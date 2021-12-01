@@ -22,6 +22,7 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     : PCI::Device(device_identifier.address())
     , m_pci_device_id(device_identifier)
     , m_admin_queue_ready(false)
+    , m_device_count(0)
 {
     // Nr of queues = one queue per core + one admin queue
     auto nr_of_queues = Processor::count() + 1;
@@ -148,7 +149,8 @@ void NVMEController::identify_and_init_namespaces()
             auto val = get_ns_features(namespace_data_struct);
             dbgln("Nsize is {} and lba is {}", val.get<0>(), 1 << val.get<1>());
 
-            m_namespaces.append(NVMENameSpace::create(m_queues,     ns, val.get<0>(), val.get<1>()));
+            m_namespaces.append(NVMENameSpace::create(m_queues, ns, val.get<0>(), val.get<1>()));
+            m_device_count++;
         }
     }
     // Get the device attributes of the active namespaces & init namespace
@@ -156,11 +158,34 @@ void NVMEController::identify_and_init_namespaces()
 Tuple<u64, u8> NVMEController::get_ns_features(Array<u8, 4096>& identify_data_struct)
 {
     auto flbas = identify_data_struct[26] & 0xf;
-    // FIXME: Is there a better way of retreiving the information that casts?
-    auto nsize = *reinterpret_cast<u64*>(identify_data_struct.data());
+    // FIXME: Is there a better way of retreiving the information instead of casts?
+    auto namespace_size = *reinterpret_cast<u64*>(identify_data_struct.data());
     auto lba_format = *reinterpret_cast<u32*>((identify_data_struct.data() + 128 + (4 * flbas)));
 
     auto lba_size = (lba_format & 0x00ff0000) >> 16;
-    return Tuple<u64, u8>(nsize, lba_size);
+    return Tuple<u64, u8>(namespace_size, lba_size);
+}
+RefPtr<StorageDevice> NVMEController::device(u32 index) const
+{
+    return m_namespaces.at(index);
+}
+
+size_t NVMEController::devices_count() const
+{
+    return m_device_count;
+}
+bool NVMEController::reset()
+{
+    TODO();
+    return false;
+}
+bool NVMEController::shutdown()
+{
+    TODO();
+    return false;
+}
+void NVMEController::complete_current_request([[maybe_unused]]AsyncDeviceRequest::RequestResult result)
+{
+    VERIFY_NOT_REACHED();
 }
 }

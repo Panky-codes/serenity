@@ -17,8 +17,8 @@
 #include <Kernel/Storage/StorageDevice.h>
 
 namespace Kernel {
-// class NVMEQueue;
-class NVMENameSpace : public StorageDevice {
+class NVMENameSpace : public StorageDevice
+{
 
 public:
     static NonnullRefPtr<NVMENameSpace> create(NonnullRefPtrVector<NVMEQueue> queues, u16 nsid, size_t storage_size, size_t lba_size);

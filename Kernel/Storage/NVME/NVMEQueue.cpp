@@ -115,6 +115,7 @@ void NVMEQueue::setup_io_queue()
         sub.cdw11 = AK::convert_between_host_and_little_endian(qid << 16 | flags);
         m_controller->submit_admin_command(sub);
     }
+
     enable_irq();
 }
 bool NVMEQueue::cqe_available()

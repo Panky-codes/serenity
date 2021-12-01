@@ -19,19 +19,20 @@
 namespace Kernel {
 ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
 class NVMEController;
-// TODO: Change this to Storage controller later
+
+// TODO: Change this to a BASE class later later
 class NonsenseBaseClass1 : public AK::RefCounted<NonsenseBaseClass1> {
 };
 
-class NVMEQueue : public NonsenseBaseClass1
-    , public IRQHandler {
+class NVMEQueue : public IRQHandler
+    , public NonsenseBaseClass1 {
 public:
     static NonnullRefPtr<NVMEQueue> create(const NVMEController&, u16 qid, u8 irq);
     explicit NVMEQueue(const NVMEController& controller, u16 qid, u8 irq);
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
     void submit_sqe(struct nvme_submission const&);
-    u16 submit_sync_sqe(struct nvme_submission &);
+    u16 submit_sync_sqe(struct nvme_submission&);
 
 private:
     void setup_admin_queue();
