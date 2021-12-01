@@ -61,7 +61,7 @@ private:
     RefPtr<Memory::PhysicalPage> m_sq_dma_page;
     OwnPtr<Memory::Region> m_rw_dma_region;
     RefPtr<Memory::PhysicalPage> m_rw_dma_page;
-    // Need to add a lock to current request
+    Spinlock m_request_lock;
     RefPtr<AsyncBlockDeviceRequest> m_current_request;
 
 };

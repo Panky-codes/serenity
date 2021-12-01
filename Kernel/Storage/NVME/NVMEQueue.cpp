@@ -152,8 +152,10 @@ bool NVMEQueue::handle_irq(const RegisterState&)
         status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
         dbgln("CQ_HEAD: {} in handle irq", cq_head);
         dbgln("Status field is: {:x}", status);
-        if (m_current_request)
+        if (m_current_request) {
+            SpinlockLocker lock(m_request_lock);
             complete_current_request(status);
+        }
         update_cqe_head();
     }
     if (nr_of_processed_cqes) {
@@ -203,6 +205,7 @@ void NVMEQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 
 {
     // TODO: count should be 16 bits Figure 372 1.4 Spec
     nvme_submission sub {};
+    SpinlockLocker m_lock(m_request_lock);
     m_current_request = request;
     sub.op = OP_NVME_READ;
     sub.nsid = nsid;
@@ -220,6 +223,7 @@ void NVMEQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32
 {
     // TODO: count should be 16 bits Figure 372 1.4 Spec
     nvme_submission sub {};
+    SpinlockLocker m_lock(m_request_lock);
     m_current_request = request;
 
     if (auto result = m_current_request->read_from_buffer(m_current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * m_current_request->block_count()); result.is_error()) {
@@ -240,17 +244,25 @@ void NVMEQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32
 
 void NVMEQueue::complete_current_request(u16 status)
 {
+    VERIFY(m_request_lock.is_locked());
+
     g_io_work->queue([this, status]() {
+        SpinlockLocker lock(m_request_lock);
         auto current_request = m_current_request;
         m_current_request.clear();
-        if (status)
+        if (status){
+            lock.unlock();
             current_request->complete(AsyncBlockDeviceRequest::Failure);
+        }
         if (current_request->request_type() == AsyncBlockDeviceRequest::RequestType::Read) {
             if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * current_request->block_count()); result.is_error()) {
+                lock.unlock();
                 current_request->complete(AsyncDeviceRequest::MemoryFault);
                 return;
             }
         }
+        dbgln("Lock is unlocked");
+        lock.unlock();
         current_request->complete(AsyncDeviceRequest::Success);
     });
 }
