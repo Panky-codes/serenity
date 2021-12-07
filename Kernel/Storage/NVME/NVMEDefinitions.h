@@ -57,6 +57,7 @@ struct nvme_submission;
 #define OP_ADMIN_CREATE_COMPLETION_QUEUE 0x5
 #define OP_ADMIN_CREATE_SUBMISSION_QUEUE 0x1
 #define OP_ADMIN_IDENTIFY 0x6
+#define OP_ADMIN_SET_FEATURES 0x9
 // IO opcodes
 #define OP_NVME_WRITE 0x1
 #define OP_NVME_READ 0x2

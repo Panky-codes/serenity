@@ -45,62 +45,62 @@ void NVMENameSpace::start_request(AsyncBlockDeviceRequest& request)
 }
 void NVMENameSpace::test_rw()
 {
-    {
-        AK::Array<u8, 4096> buf {};
-        auto index = 4098;
-        buf[2] = 9;
-        buf[563] = 7;
-        auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
-        auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Write, index, 2, uk_buf, 512);
-        if (read_request_or_error.is_error()) {
-            dbgln("NVMENS::read_block({}): try_make_request failed", index);
-            return;
+    for (int i = 0; i < 100; i++) {
+        // TODO: Remove this before testing it with actual EXT2 filesystem
+        {
+            AK::Array<u8, 4096> buf {};
+            auto index = i;
+            buf[1] = 9;
+            auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
+            auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Write, index, 1, uk_buf, 512);
+            if (read_request_or_error.is_error()) {
+                dbgln("NVMENS::read_block({}): try_make_request failed", index);
+                return;
+            }
+            auto read_request = read_request_or_error.release_value();
+            switch (read_request->wait().request_result()) {
+            case AsyncDeviceRequest::Success:
+                break;
+            case AsyncDeviceRequest::Failure:
+                dbgln("NVMENS::read_block({}) IO error", index);
+                break;
+            case AsyncDeviceRequest::MemoryFault:
+                dbgln("NVMENS::read_block({}) EFAULT", index);
+                break;
+            case AsyncDeviceRequest::Cancelled:
+                dbgln("NVMENS::read_block({}) cancelled", index);
+                break;
+            default:
+                VERIFY_NOT_REACHED();
+            }
         }
-        auto read_request = read_request_or_error.release_value();
-        switch (read_request->wait().request_result()) {
-        case AsyncDeviceRequest::Success:
-            break;
-        case AsyncDeviceRequest::Failure:
-            dbgln("NVMENS::read_block({}) IO error", index);
-            break;
-        case AsyncDeviceRequest::MemoryFault:
-            dbgln("NVMENS::read_block({}) EFAULT", index);
-            break;
-        case AsyncDeviceRequest::Cancelled:
-            dbgln("NVMENS::read_block({}) cancelled", index);
-            break;
-        default:
-            VERIFY_NOT_REACHED();
+        {
+            AK::Array<u8, 4096> buf {};
+            auto index = i;
+            auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
+            auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Read, index, 1, uk_buf, 512);
+            if (read_request_or_error.is_error()) {
+                dbgln("NVMENS::read_block({}): try_make_request failed", index);
+                return;
+            }
+            auto read_request = read_request_or_error.release_value();
+            switch (read_request->wait().request_result()) {
+            case AsyncDeviceRequest::Success:
+                break;
+            case AsyncDeviceRequest::Failure:
+                dbgln("NVMENS::read_block({}) IO error", index);
+                break;
+            case AsyncDeviceRequest::MemoryFault:
+                dbgln("NVMENS::read_block({}) EFAULT", index);
+                break;
+            case AsyncDeviceRequest::Cancelled:
+                dbgln("NVMENS::read_block({}) cancelled", index);
+                break;
+            default:
+                VERIFY_NOT_REACHED();
+            }
+            VERIFY(buf[1] == 9);
         }
-    }
-    {
-        AK::Array<u8, 4096> buf {};
-        auto index = 4098;
-        auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
-        auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Read, index, 2, uk_buf, 512);
-        if (read_request_or_error.is_error()) {
-            dbgln("NVMENS::read_block({}): try_make_request failed", index);
-            return;
-        }
-        auto read_request = read_request_or_error.release_value();
-        switch (read_request->wait().request_result()) {
-        case AsyncDeviceRequest::Success:
-            break;
-        case AsyncDeviceRequest::Failure:
-            dbgln("NVMENS::read_block({}) IO error", index);
-            break;
-        case AsyncDeviceRequest::MemoryFault:
-            dbgln("NVMENS::read_block({}) EFAULT", index);
-            break;
-        case AsyncDeviceRequest::Cancelled:
-            dbgln("NVMENS::read_block({}) cancelled", index);
-            break;
-        default:
-            VERIFY_NOT_REACHED();
-        }
-        VERIFY(buf[2] == 9);
-        VERIFY(buf[563] == 7);
-
     }
     return;
 }

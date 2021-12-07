@@ -26,12 +26,13 @@ class NonsenseBaseClass1 : public AK::RefCounted<NonsenseBaseClass1> {
 class AsyncBlockDeviceRequest;
 class NVMEQueue : public IRQHandler
     , public NonsenseBaseClass1 {
+AK_MAKE_ETERNAL
 public:
     static NonnullRefPtr<NVMEQueue> create(const NVMEController&, u16 qid, u8 irq);
     explicit NVMEQueue(const NVMEController& controller, u16 qid, u8 irq);
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
-    void submit_sqe(struct nvme_submission const&);
+    void submit_sqe(struct nvme_submission &);
     u16 submit_sync_sqe(struct nvme_submission&);
     void read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
     void write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
@@ -47,6 +48,7 @@ private:
     u16 qid;
     u8 cq_valid_phase;
     u16 sq_tail;
+    u16 prev_sq_tail {};
     u16 cq_head;
     bool m_admin_queue;
     // TODO: need to find a better way of getting this

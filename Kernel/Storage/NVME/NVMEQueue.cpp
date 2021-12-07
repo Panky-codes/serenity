@@ -147,14 +147,19 @@ bool NVMEQueue::handle_irq(const RegisterState&)
     u32 nr_of_processed_cqes = 0;
     while (cqe_available()) {
         u16 status;
+        u16 cmdid;
         auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
         ++nr_of_processed_cqes;
         status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
+        cmdid = completion_arr[cq_head].command_id;
         dbgln("CQ_HEAD: {} in handle irq", cq_head);
+        dbgln("CMD ID: {} in handle irq", cmdid);
         dbgln("Status field is: {:x}", status);
-        if (m_current_request) {
+        if (m_admin_queue == false && cmdid == prev_sq_tail) {
             SpinlockLocker lock(m_request_lock);
-            complete_current_request(status);
+            if (m_current_request) {
+                complete_current_request(status);
+            }
         }
         update_cqe_head();
     }
@@ -163,16 +168,19 @@ bool NVMEQueue::handle_irq(const RegisterState&)
     }
     return nr_of_processed_cqes ? true : false;
 }
-void NVMEQueue::submit_sqe(const struct nvme_submission& sub)
+void NVMEQueue::submit_sqe(struct nvme_submission& sub)
 {
     SpinlockLocker lock(m_sq_lock);
+    sub.cmdid = sq_tail;
+    prev_sq_tail = sq_tail;
+    // FIXME: Somehow this debug statement hides a race in NVMENamespace
     AK::dbgln("CID in submit_sqe is: {}", sub.cmdid);
     auto* submission_arr = reinterpret_cast<nvme_submission*>(m_sq_dma_region->vaddr().as_ptr());
 
     memcpy(&submission_arr[sq_tail], &sub, sizeof(nvme_submission));
     {
-        auto temp_sq_tail = sq_tail + 1;
-        if (temp_sq_tail == IO_QUEUE_SIZE)
+        u32 temp_sq_tail = sq_tail + 1;
+        if (temp_sq_tail == m_qdepth)
             sq_tail = 0;
         else
             sq_tail = temp_sq_tail;
@@ -187,7 +195,6 @@ u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
     // TODO: Reading does not need a lock I guess?
     // For now let's use sq tail as a unique command id.
     u16 cqe_cid;
-    sub.cmdid = sq_tail;
     u16 cid = sq_tail;
     full_memory_barrier();
     submit_sqe(sub);
@@ -203,10 +210,13 @@ u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
 
 void NVMEQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
 {
+
     // TODO: count should be 16 bits Figure 372 1.4 Spec
+
     nvme_submission sub {};
     SpinlockLocker m_lock(m_request_lock);
     m_current_request = request;
+
     sub.op = OP_NVME_READ;
     sub.nsid = nsid;
     sub.cdw10 = AK::convert_between_host_and_little_endian(index & 0xFFFFFFFF);
@@ -221,6 +231,7 @@ void NVMEQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 
 
 void NVMEQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
 {
+
     // TODO: count should be 16 bits Figure 372 1.4 Spec
     nvme_submission sub {};
     SpinlockLocker m_lock(m_request_lock);
@@ -248,22 +259,20 @@ void NVMEQueue::complete_current_request(u16 status)
 
     g_io_work->queue([this, status]() {
         SpinlockLocker lock(m_request_lock);
-        auto current_request = m_current_request;
-        m_current_request.clear();
+        auto& current_request = m_current_request;
         if (status){
             lock.unlock();
             current_request->complete(AsyncBlockDeviceRequest::Failure);
         }
         if (current_request->request_type() == AsyncBlockDeviceRequest::RequestType::Read) {
-            if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * current_request->block_count()); result.is_error()) {
+            if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * current_request->block_count());result.is_error()) {
                 lock.unlock();
                 current_request->complete(AsyncDeviceRequest::MemoryFault);
                 return;
             }
         }
-        dbgln("Lock is unlocked");
-        lock.unlock();
         current_request->complete(AsyncDeviceRequest::Success);
+        current_request.clear();
     });
 }
 }

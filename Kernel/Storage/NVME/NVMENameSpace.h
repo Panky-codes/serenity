@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include "AK/kmalloc.h"
 #include <AK/NonnullRefPtr.h>
 #include <AK/NonnullRefPtrVector.h>
 #include <AK/OwnPtr.h>
@@ -19,6 +20,7 @@
 namespace Kernel {
 class NVMENameSpace : public StorageDevice
 {
+  AK_MAKE_ETERNAL
 
 public:
     static NonnullRefPtr<NVMENameSpace> create(NonnullRefPtrVector<NVMEQueue> queues, u16 nsid, size_t storage_size, size_t lba_size);

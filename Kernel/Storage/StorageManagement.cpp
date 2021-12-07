@@ -67,6 +67,7 @@ UNMAP_AFTER_INIT void StorageManagement::enumerate_controllers(bool force_pio)
                 && device_identifier.subclass_code().value() == to_underlying(PCI::MassStorage::SubclassID::NVMEController)) {
                 dbgln("NVMe controller found");
                 auto val = NVMEController::initialize(device_identifier);
+//                 m_controllers.append(NVMEController::initialize(device_identifier));
             }
         });
     }

@@ -150,9 +150,10 @@ void NVMEController::identify_and_init_namespaces()
                 VERIFY_NOT_REACHED();
             }
             auto val = get_ns_features(namespace_data_struct);
-            dbgln("Nsize is {} and lba is {}", val.get<0>(), 1 << val.get<1>());
+            auto lba = 1 << val.get<1>();
+            dbgln("Nsize is {} and lba is {}", val.get<0>(), lba);
 
-            m_namespaces.append(NVMENameSpace::create(m_queues, ns, val.get<0>(), val.get<1>()));
+            m_namespaces.append(NVMENameSpace::create(m_queues, ns, val.get<0>(), lba));
             m_device_count++;
         }
     }
