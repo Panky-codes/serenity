@@ -6,6 +6,7 @@
 #pragma once
 
 #include <AK/NonnullRefPtrVector.h>
+#include <AK/NonnullRefPtr.h>
 #include <AK/OwnPtr.h>
 #include <AK/RefPtr.h>
 #include <AK/Tuple.h>
@@ -20,7 +21,7 @@
 namespace Kernel {
 
 class NVMEController : public PCI::Device
-    , public StorageController{
+    , public StorageController {
     AK_MAKE_ETERNAL
 public:
     static NonnullRefPtr<NVMEController> initialize(PCI::DeviceIdentifier const&);
@@ -38,17 +39,7 @@ public:
     void start_controller();
     u32 get_admin_q_dept();
     void write64_controller_regs(u32 offset, u64 value) { *reinterpret_cast<u64*>(m_controller_regs->vaddr().as_ptr() + offset) = value; };
-    void update_cq_doorbell(u16 cq_head, u16 qid)
-    {
-        u32 addr = REG_SQ0TDBL_START + ((2 * qid + 1) * (4 << CAP_DSTRD));
-        *reinterpret_cast<u16*>(m_controller_regs->vaddr().as_ptr() + addr) = cq_head;
-    }
 
-    void update_sq_doorbell(u16 sq_head, u16 qid)
-    {
-        u32 addr = REG_SQ0TDBL_START + ((2 * qid) * (4 << CAP_DSTRD));
-        *reinterpret_cast<u16*>(m_controller_regs->vaddr().as_ptr() + addr) = sq_head;
-    }
     u16 submit_admin_command(struct nvme_submission& sub, bool sync = false)
     {
         // First queue is always the admin queue
@@ -67,12 +58,15 @@ private:
     void identify_and_init_namespaces();
     Tuple<u64, u8> get_ns_features(Array<u8, NVME_IDENTIFY_SIZE>& identify_data_struct);
     void test_rw_functionality();
+    void create_admin_queue(u8 irq);
+    void create_io_queue();
 
 private:
     PCI::DeviceIdentifier m_pci_device_id;
+    RefPtr<NVMEQueue> m_admin_queue;
     NonnullRefPtrVector<NVMEQueue> m_queues;
     NonnullRefPtrVector<NVMENameSpace> m_namespaces;
-    OwnPtr<Memory::Region> m_controller_regs;
+    Memory::Region* m_controller_regs;
     bool m_admin_queue_ready;
     size_t m_device_count;
 };

@@ -18,31 +18,44 @@
 
 namespace Kernel {
 ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
-class NVMEController;
 
 // TODO: Change this to a BASE class later later
 class NonsenseBaseClass1 : public AK::RefCounted<NonsenseBaseClass1> {
 };
+
 class AsyncBlockDeviceRequest;
 class NVMEQueue : public IRQHandler
     , public NonsenseBaseClass1 {
 AK_MAKE_ETERNAL
 public:
-    static NonnullRefPtr<NVMEQueue> create(const NVMEController&, u16 qid, u8 irq);
-    explicit NVMEQueue(const NVMEController& controller, u16 qid, u8 irq);
+    static NonnullRefPtr<NVMEQueue> create(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
+    explicit NVMEQueue(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
     void submit_sqe(struct nvme_submission &);
     u16 submit_sync_sqe(struct nvme_submission&);
     void read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
     void write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
+    void enable_interrupts() {enable_irq();};
+    void disable_interrupts() {disable_irq();};
 
 private:
-    void setup_admin_queue();
-    void setup_io_queue();
+  //  void setup_admin_queue();
+//    void setup_io_queue();
     bool cqe_available();
     void update_cqe_head();
     void complete_current_request(u16 status);
+    void update_cq_doorbell()
+    {
+        u32 addr = REG_SQ0TDBL_START + ((2 * qid + 1) * (4 << CAP_DSTRD));
+        *reinterpret_cast<u16*>(m_db_regs->vaddr().as_ptr() + addr) = cq_head;
+    }
+
+    void update_sq_doorbell()
+    {
+        u32 addr = REG_SQ0TDBL_START + ((2 * qid) * (4 << CAP_DSTRD));
+        *reinterpret_cast<u16*>(m_db_regs->vaddr().as_ptr() + addr) = sq_tail;
+    }
 
 private:
     u16 qid;
@@ -56,12 +69,12 @@ private:
     u32 m_qdepth;
     Spinlock m_cq_lock { LockRank::Interrupts };
     Spinlock m_sq_lock { LockRank::Interrupts };
-    RefPtr<NVMEController> m_controller;
     OwnPtr<Memory::Region> m_cq_dma_region;
     RefPtr<Memory::PhysicalPage> m_cq_dma_page;
     OwnPtr<Memory::Region> m_sq_dma_region;
     RefPtr<Memory::PhysicalPage> m_sq_dma_page;
     OwnPtr<Memory::Region> m_rw_dma_region;
+    Memory::Region* m_db_regs;
     RefPtr<Memory::PhysicalPage> m_rw_dma_page;
     Spinlock m_request_lock;
     RefPtr<AsyncBlockDeviceRequest> m_current_request;
