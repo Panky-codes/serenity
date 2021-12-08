@@ -35,7 +35,7 @@ struct nvme_submission;
 #define CQ_WIDTH 4 // CQ is 16 bytes(2^4) in size. NVMe spec: 4.6
 #define SQ_WIDTH 6 // SQ size is 64 bytes(2^6) in size. NVMe spec: 4.2
 #define CQ_SIZE(q_depth) ((q_depth) * sizeof(struct nvme_completion))
-#define SQ_SIZE(q_depth) ((q_depth)*SQ_WIDTH)
+#define SQ_SIZE(q_depth) ((q_depth) << SQ_WIDTH)
 #define PHASE_TAG(x) ((x)&0x1)
 #define CQ_STATUS_FIELD_MASK 0xfffe
 #define CQ_STATUS_FIELD(x) (((x)&CQ_STATUS_FIELD_MASK) >> 1)

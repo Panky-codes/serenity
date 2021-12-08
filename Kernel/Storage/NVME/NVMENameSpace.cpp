@@ -33,9 +33,8 @@ NVMENameSpace::NVMENameSpace(NonnullRefPtrVector<NVMEQueue> queues, size_t max_a
 
 void NVMENameSpace::start_request(AsyncBlockDeviceRequest& request)
 {
-    // TODO: qid 0 is allocated to admin queue
-    auto qid = Processor::current_id() + 1;
-    auto& queue = m_queues.at(qid);
+    auto index = Processor::current_id();
+    auto& queue = m_queues.at(index);
 
     if (request.request_type() == AsyncBlockDeviceRequest::Read) {
         queue.read(request, m_nsid, request.block_index(), request.block_count());

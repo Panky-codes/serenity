@@ -19,17 +19,13 @@
 namespace Kernel {
 ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
 
-// TODO: Change this to a BASE class later later
-class NonsenseBaseClass1 : public AK::RefCounted<NonsenseBaseClass1> {
-};
-
 class AsyncBlockDeviceRequest;
 class NVMEQueue : public IRQHandler
-    , public NonsenseBaseClass1 {
+    , public AK::RefCounted<NVMEQueue> {
 AK_MAKE_ETERNAL
 public:
-    static NonnullRefPtr<NVMEQueue> create(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
-    explicit NVMEQueue(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
+    static NonnullRefPtr<NVMEQueue> create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
+    explicit NVMEQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
     void submit_sqe(struct nvme_submission &);
@@ -40,8 +36,6 @@ public:
     void disable_interrupts() {disable_irq();};
 
 private:
-  //  void setup_admin_queue();
-//    void setup_io_queue();
     bool cqe_available();
     void update_cqe_head();
     void complete_current_request(u16 status);

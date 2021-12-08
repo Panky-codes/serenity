@@ -43,11 +43,10 @@ public:
     u16 submit_admin_command(struct nvme_submission& sub, bool sync = false)
     {
         // First queue is always the admin queue
-        auto& admin_queue = m_queues.first();
         if (sync) {
-            return admin_queue.submit_sync_sqe(sub);
+            return m_admin_queue->submit_sync_sqe(sub);
         }
-        admin_queue.submit_sqe(sub);
+        m_admin_queue->submit_sqe(sub);
         return 0;
     }
 
@@ -59,7 +58,7 @@ private:
     Tuple<u64, u8> get_ns_features(Array<u8, NVME_IDENTIFY_SIZE>& identify_data_struct);
     void test_rw_functionality();
     void create_admin_queue(u8 irq);
-    void create_io_queue();
+    void create_io_queue(u8 irq, u8 qid);
 
 private:
     PCI::DeviceIdentifier m_pci_device_id;

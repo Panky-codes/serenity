@@ -26,8 +26,10 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     , m_admin_queue_ready(false)
     , m_device_count(0)
 {
-    // Nr of queues = one queue per core + one admin queue
-    auto nr_of_queues = Processor::count() + 1;
+    // Nr of queues = one queue per core
+    auto nr_of_queues = Processor::count();
+    auto irq = device_identifier.interrupt_line().value();
+
     PCI::enable_memory_space(device_identifier.address());
     PCI::enable_bus_mastering(device_identifier.address());
     auto bar = PCI::get_BAR0(device_identifier.address()) & 0xFFFFFFF0;
@@ -41,16 +43,14 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     VERIFY((*static_cast<u16*>(ptr)) == 2047); // TODO: Remove this
 
     // TODO: For now determining admin queue based on qid. Create a enum flag
-    create_admin_queue(device_identifier.interrupt_line().value());
-//        for (u32 cpuid = 0; cpuid < nr_of_queues; ++cpuid) {
-//            if (cpuid != 0) {
-//                VERIFY(m_admin_queue_ready == true);
-//            }
-//            m_queues.append(NVMEQueue::create(cpuid, device_identifier.interrupt_line().value()));
-//        }
-    //    VERIFY(m_admin_queue_ready == true);
+    create_admin_queue(irq);
+    VERIFY(m_admin_queue_ready == true);
+    for (u32 cpuid = 0; cpuid < nr_of_queues; ++cpuid) {
+        // qid is zero is used for admin queue
+        create_io_queue(irq, cpuid + 1);
+    }
     //    // Identify Namespace attributes
-    //    identify_and_init_namespaces();
+        identify_and_init_namespaces();
 }
 
 void NVMEController::reset_controller()
@@ -107,8 +107,8 @@ void NVMEController::identify_and_init_namespaces()
     u32 active_namespace_list[NVME_IDENTIFY_SIZE / sizeof(u32)];
     //    u8 namespace_data_struct[NVME_IDENTIFY_SIZE];
 
-    if (auto buffer = dma_alloc_buffer(NVME_IDENTIFY_SIZE, "Admin CQ queue", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
-        dmesgln("Failed o allocate memory for ADMIN CQ queue");
+    if (auto buffer = dma_alloc_buffer(NVME_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
+        dmesgln("Failed to allocate memory for ADMIN CQ queue");
         // TODO:Need to figure out better error propagation
         VERIFY_NOT_REACHED();
     } else {
@@ -223,7 +223,7 @@ void NVMEController::create_admin_queue(u8 irq)
     } else {
         sq_dma_region = buffer.release_value();
     }
-    m_admin_queue  = (NVMEQueue::create(0, irq, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, m_controller_regs));
+    m_admin_queue = (NVMEQueue::create(0, irq, qdepth, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, m_controller_regs));
 
     // TODO: Should this be written as little endian?
     write64_controller_regs(CC_ACQ, reinterpret_cast<u64>(cq_dma_page->paddr().as_ptr()));
@@ -232,5 +232,53 @@ void NVMEController::create_admin_queue(u8 irq)
     start_controller();
     set_admin_queue_ready_flag();
     m_admin_queue->enable_interrupts();
+}
+void NVMEController::create_io_queue(u8 irq, u8 qid)
+{
+    nvme_submission sub {};
+    OwnPtr<Memory::Region> cq_dma_region;
+    RefPtr<Memory::PhysicalPage> cq_dma_page;
+    OwnPtr<Memory::Region> sq_dma_region;
+    RefPtr<Memory::PhysicalPage> sq_dma_page;
+    auto cq_size = round_up_to_power_of_two(CQ_SIZE(IO_QUEUE_SIZE), 4096);
+    auto sq_size = round_up_to_power_of_two(SQ_SIZE(IO_QUEUE_SIZE), 4096);
+
+    VERIFY(sizeof(nvme_submission) == (1 << SQ_WIDTH));
+    if (auto buffer = dma_alloc_buffer(cq_size, "IO CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
+        dmesgln("Failed to allocate memory for IO CQ queue");
+        VERIFY_NOT_REACHED();
+    } else {
+        cq_dma_region = buffer.release_value();
+    }
+
+    if (auto buffer = dma_alloc_buffer(sq_size, "IO SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
+        dmesgln("Failed to allocate memory for IO CQ queue");
+        VERIFY_NOT_REACHED();
+    } else {
+        sq_dma_region = buffer.release_value();
+    }
+    {
+        sub.op = OP_ADMIN_CREATE_COMPLETION_QUEUE;
+        sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(cq_dma_page->paddr().as_ptr()));
+        sub.cdw10 = AK::convert_between_host_and_little_endian((IO_QUEUE_SIZE << 16 | qid));
+        auto flags = QUEUE_IRQ_ENABLED | QUEUE_PHY_CONTIGUOUS;
+        // TODO: For now using pin based interrupts. Clear the first 16 bits
+        // to use pin-based interrupts. NVMe spec 1.4, section 5.3
+        sub.cdw11 = AK::convert_between_host_and_little_endian(flags & 0xFFFF);
+        submit_admin_command(sub);
+    }
+    {
+        sub.op = OP_ADMIN_CREATE_SUBMISSION_QUEUE;
+        sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(sq_dma_page->paddr().as_ptr()));
+        sub.cdw10 = AK::convert_between_host_and_little_endian((IO_QUEUE_SIZE << 16 | qid));
+        auto flags = QUEUE_IRQ_ENABLED | QUEUE_PHY_CONTIGUOUS;
+        // The qid used below points to the completion queue qid NVMe spec 1.4, section 5.4
+        sub.cdw11 = AK::convert_between_host_and_little_endian(qid << 16 | flags);
+        submit_admin_command(sub);
+    }
+
+    m_queues.append(NVMEQueue::create(qid, irq, IO_QUEUE_SIZE, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, m_controller_regs));
+// TODO: Interrupts should be enabled towards the end i.e after ns creation?
+    m_queues.last().enable_interrupts();
 }
 }

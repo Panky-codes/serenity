@@ -21,12 +21,12 @@ ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringV
     return region_or_error;
 }
 
-NonnullRefPtr<NVMEQueue> NVMEQueue::create(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
+NonnullRefPtr<NVMEQueue> NVMEQueue::create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
 {
-    return adopt_ref(*new NVMEQueue(qid, irq, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, db_regs));
+    return adopt_ref(*new NVMEQueue(qid, irq, q_depth, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, db_regs));
 }
 
-NVMEQueue::NVMEQueue(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
+NVMEQueue::NVMEQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
     : IRQHandler(irq)
     , qid(qid)
     , cq_valid_phase(1)
@@ -34,7 +34,7 @@ NVMEQueue::NVMEQueue(u16 qid, u8 irq, OwnPtr<Memory::Region> cq_dma_region, RefP
     , cq_head(0)
     , m_admin_queue(qid == 0)
     , m_irq(irq)
-    , m_qdepth(0)
+    , m_qdepth(q_depth)
     , m_cq_dma_region(move(cq_dma_region))
     , m_cq_dma_page(cq_dma_page)
     , m_sq_dma_region(move(sq_dma_region))
@@ -198,6 +198,7 @@ u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
     // FIXME: Probably a sloppy way of doing sync requests. Need to find a better way
     // Like having a list of callbacks associated with cid
     do {
+        // TODO: Doesn't work for cq_head = 0
         cqe_cid = completion_arr[cq_head - 1].command_id;
     } while (cid != cqe_cid);
 
