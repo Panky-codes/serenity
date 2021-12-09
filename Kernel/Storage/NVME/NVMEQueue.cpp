@@ -101,8 +101,7 @@ void NVMEQueue::submit_sqe(struct nvme_submission& sub)
     SpinlockLocker lock(m_sq_lock);
     sub.cmdid = sq_tail;
     prev_sq_tail = sq_tail;
-    // FIXME: Somehow this debug statement hides a race in NVMENamespace
-    AK::dbgln("CID in submit_sqe is: {}", sub.cmdid);
+//    AK::dbgln("CID in submit_sqe is: {}", sub.cmdid);
     auto* submission_arr = reinterpret_cast<nvme_submission*>(m_sq_dma_region->vaddr().as_ptr());
 
     memcpy(&submission_arr[sq_tail], &sub, sizeof(nvme_submission));
@@ -188,7 +187,8 @@ void NVMEQueue::complete_current_request(u16 status)
 
     g_io_work->queue([this, status]() {
         SpinlockLocker lock(m_request_lock);
-        auto& current_request = m_current_request;
+        auto current_request = m_current_request;
+        m_current_request.clear();
         if (status) {
             lock.unlock();
             current_request->complete(AsyncBlockDeviceRequest::Failure);
@@ -200,8 +200,8 @@ void NVMEQueue::complete_current_request(u16 status)
                 return;
             }
         }
+        lock.unlock();
         current_request->complete(AsyncDeviceRequest::Success);
-        current_request.clear();
     });
 }
 }

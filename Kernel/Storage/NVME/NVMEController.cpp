@@ -105,7 +105,7 @@ void NVMEController::identify_and_init_namespaces()
     OwnPtr<Memory::Region> prp_dma_region;
     AK::Array<u8, NVME_IDENTIFY_SIZE> namespace_data_struct;
     u32 active_namespace_list[NVME_IDENTIFY_SIZE / sizeof(u32)];
-    // TODO: Without this print stuff breaks in KVM mode LOL
+    // TODO: Without this print stuff breaks in **KVM** mode
     dbgln("Identify namespaces");
 
     if (auto buffer = dma_alloc_buffer(NVME_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
@@ -160,7 +160,6 @@ void NVMEController::identify_and_init_namespaces()
             m_device_count++;
         }
     }
-    // Get the device attributes of the active namespaces & init namespace
 }
 Tuple<u64, u8> NVMEController::get_ns_features(Array<u8, 4096>& identify_data_struct)
 {
@@ -198,7 +197,7 @@ void NVMEController::complete_current_request([[maybe_unused]] AsyncDeviceReques
 void NVMEController::test_rw_functionality()
 {
     auto& ns = m_namespaces.at(0);
-    ns.test_rw();
+    ns.test_read();
 }
 void NVMEController::create_admin_queue(u8 irq)
 {

@@ -28,7 +28,9 @@ public:
 
     CommandSet command_set() const override { return CommandSet::NVMe; };
     void start_request(AsyncBlockDeviceRequest& request) override;
-    void test_rw();
+    void test_read();
+    void test_write();
+
 
 private:
     u16 m_nsid;
