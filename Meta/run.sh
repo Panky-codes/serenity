@@ -217,6 +217,7 @@ if [ -z "$SERENITY_MACHINE" ]; then
         -D /home/panky/SW/OS-Code/serenity/Build/qemu.log
         -trace pci_nvme*
         "
+        # -drive file=${SERENITY_DISK_IMAGE},format=raw,index=0,media=disk,if=none,id=nvm
         #NVMEFIXME also remove the above a trace and create a neat way of exposing
         # this trace functionality
         # NVMEFIXME: For now having this in the same bus

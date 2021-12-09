@@ -28,13 +28,14 @@ NVMENameSpace::NVMENameSpace(NonnullRefPtrVector<NVMEQueue> queues, size_t max_a
     , m_max_addresable_block(max_addresable_block)
     , m_queues(queues)
 {
-    test_rw();
+    /* test_rw(); */
 }
 
 void NVMENameSpace::start_request(AsyncBlockDeviceRequest& request)
 {
     auto index = Processor::current_id();
     auto& queue = m_queues.at(index);
+    VERIFY(request.block_count() <= (PAGE_SIZE/block_size()));
 
     if (request.request_type() == AsyncBlockDeviceRequest::Read) {
         queue.read(request, m_nsid, request.block_index(), request.block_count());

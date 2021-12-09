@@ -52,76 +52,7 @@ NVMEQueue::NVMEQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma
         m_rw_dma_region = buffer.release_value();
     }
 }
-//void NVMEQueue::setup_admin_queue()
-//{
-//    auto cq_size = round_up_to_power_of_two(CQ_SIZE(m_qdepth), 4096);
-//    auto sq_size = round_up_to_power_of_two(SQ_SIZE(m_qdepth), 4096);
-//    m_controller->reset_controller();
-//
-//    if (auto buffer = dma_alloc_buffer(cq_size, "Admin CQ queue", Memory::Region::Access::ReadWrite, m_cq_dma_page); buffer.is_error()) {
-//        dmesgln("Failed to allocate memory for ADMIN CQ queue");
-//        VERIFY_NOT_REACHED();
-//    } else {
-//        m_cq_dma_region = buffer.release_value();
-//    }
-//
-//    if (auto buffer = dma_alloc_buffer(sq_size, "Admin SQ queue", Memory::Region::Access::ReadWrite, m_sq_dma_page); buffer.is_error()) {
-//        dmesgln("Failed to allocate memory for ADMIN CQ queue");
-//        VERIFY_NOT_REACHED();
-//    } else {
-//        m_sq_dma_region = buffer.release_value();
-//    }
-//
-//    // TODO: Should this be written as little endian?
-//    m_controller->write64_controller_regs(CC_ACQ, reinterpret_cast<u64>(m_cq_dma_page->paddr().as_ptr()));
-//    m_controller->write64_controller_regs(CC_ASQ, reinterpret_cast<u64>(m_sq_dma_page->paddr().as_ptr()));
-//
-//    m_controller->start_controller();
-//    m_controller->set_admin_queue_ready_flag();
-//    enable_irq();
-//}
-//void NVMEQueue::setup_io_queue()
-//{
-//    nvme_submission sub {};
-//    auto cq_size = round_up_to_power_of_two(CQ_SIZE(m_qdepth), 4096);
-//    auto sq_size = round_up_to_power_of_two(SQ_SIZE(m_qdepth), 4096);
-//
-//    VERIFY(sizeof(nvme_submission) == (1 << SQ_WIDTH));
-//    if (auto buffer = dma_alloc_buffer(cq_size, "IO CQ queue", Memory::Region::Access::ReadWrite, m_cq_dma_page); buffer.is_error()) {
-//        dmesgln("Failed to allocate memory for ADMIN CQ queue");
-//        VERIFY_NOT_REACHED();
-//    } else {
-//        m_cq_dma_region = buffer.release_value();
-//    }
-//
-//    if (auto buffer = dma_alloc_buffer(sq_size, "IO SQ queue", Memory::Region::Access::ReadWrite, m_sq_dma_page); buffer.is_error()) {
-//        dmesgln("Failed to allocate memory for ADMIN CQ queue");
-//        VERIFY_NOT_REACHED();
-//    } else {
-//        m_sq_dma_region = buffer.release_value();
-//    }
-//    {
-//        sub.op = OP_ADMIN_CREATE_COMPLETION_QUEUE;
-//        sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(m_cq_dma_page->paddr().as_ptr()));
-//        sub.cdw10 = AK::convert_between_host_and_little_endian((IO_QUEUE_SIZE << 16 | qid));
-//        auto flags = QUEUE_IRQ_ENABLED | QUEUE_PHY_CONTIGUOUS;
-//        // TODO: For now using pin based interrupts. Clear the first 16 bits
-//        // to use pin-based interrupts. NVMe spec 1.4, section 5.3
-//        sub.cdw11 = AK::convert_between_host_and_little_endian(flags & 0xFFFF);
-//        m_controller->submit_admin_command(sub);
-//    }
-//    {
-//        sub.op = OP_ADMIN_CREATE_SUBMISSION_QUEUE;
-//        sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(m_sq_dma_page->paddr().as_ptr()));
-//        sub.cdw10 = AK::convert_between_host_and_little_endian((IO_QUEUE_SIZE << 16 | qid));
-//        auto flags = QUEUE_IRQ_ENABLED | QUEUE_PHY_CONTIGUOUS;
-//        // The qid used below points to the completion queue qid NVMe spec 1.4, section 5.4
-//        sub.cdw11 = AK::convert_between_host_and_little_endian(qid << 16 | flags);
-//        m_controller->submit_admin_command(sub);
-//    }
-//
-//    enable_irq();
-//}
+
 bool NVMEQueue::cqe_available()
 {
     auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
@@ -132,7 +63,7 @@ void NVMEQueue::update_cqe_head()
     SpinlockLocker lock(m_cq_lock);
     // To prevent overflow, use a temp variable
     u32 temp_cq_head = cq_head + 1;
-    if (cq_head == m_qdepth) {
+    if (temp_cq_head == m_qdepth) {
         cq_head = 0;
         cq_valid_phase ^= 1;
     } else {
@@ -149,9 +80,9 @@ bool NVMEQueue::handle_irq(const RegisterState&)
         ++nr_of_processed_cqes;
         status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
         cmdid = completion_arr[cq_head].command_id;
-        dbgln("CQ_HEAD: {} in handle irq", cq_head);
-        dbgln("CMD ID: {} in handle irq", cmdid);
-        dbgln("Status field is: {:x}", status);
+        //        dbgln("CQ_HEAD: {} in handle irq", cq_head);
+        //        dbgln("CMD ID: {} in handle irq", cmdid);
+        //        dbgln("Status field is: {:x}", status);
         if (m_admin_queue == false && cmdid == prev_sq_tail) {
             SpinlockLocker lock(m_request_lock);
             if (m_current_request) {
@@ -258,12 +189,12 @@ void NVMEQueue::complete_current_request(u16 status)
     g_io_work->queue([this, status]() {
         SpinlockLocker lock(m_request_lock);
         auto& current_request = m_current_request;
-        if (status){
+        if (status) {
             lock.unlock();
             current_request->complete(AsyncBlockDeviceRequest::Failure);
         }
         if (current_request->request_type() == AsyncBlockDeviceRequest::RequestType::Read) {
-            if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * current_request->block_count());result.is_error()) {
+            if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * current_request->block_count()); result.is_error()) {
                 lock.unlock();
                 current_request->complete(AsyncDeviceRequest::MemoryFault);
                 return;
