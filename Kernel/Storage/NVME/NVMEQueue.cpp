@@ -81,7 +81,11 @@ bool NVMEQueue::handle_irq(const RegisterState&)
         status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
         cmdid = completion_arr[cq_head].command_id;
         dbgln_if(NVME_DEBUG, "NVMe: Completion with status {:x} and command identifier {}. CQ_HEAD: {}", status, cmdid, cq_head);
-        if (m_admin_queue == false && cmdid == prev_sq_tail) {
+        if (m_admin_queue == false) {
+            // As the block layer calls are now sync,
+            // everything is operated on a single request similar to BMIDE driver.
+            // TODO: Remove this constraint eventually.
+            VERIFY(cmdid == prev_sq_tail);
             SpinlockLocker lock(m_request_lock);
             if (m_current_request) {
                 complete_current_request(status);
@@ -97,6 +101,7 @@ bool NVMEQueue::handle_irq(const RegisterState&)
 void NVMEQueue::submit_sqe(struct nvme_submission& sub)
 {
     SpinlockLocker lock(m_sq_lock);
+    // For now let's use sq tail as a unique command id.
     sub.cmdid = sq_tail;
     prev_sq_tail = sq_tail;
 
@@ -119,17 +124,21 @@ void NVMEQueue::submit_sqe(struct nvme_submission& sub)
 u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
 {
     auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
-    // TODO: Reading does not need a lock I guess?
     // For now let's use sq tail as a unique command id.
     u16 cqe_cid;
     u16 cid = sq_tail;
     full_memory_barrier();
     submit_sqe(sub);
-    // FIXME: Probably a sloppy way of doing sync requests. Need to find a better way
-    // Like having a list of callbacks associated with cid
     do {
-        // TODO: Doesn't work for cq_head = 0
-        cqe_cid = completion_arr[cq_head - 1].command_id;
+        int index;
+        {
+            SpinlockLocker lock(m_cq_lock);
+            index = cq_head - 1;
+            if (index < 0)
+                index = IO_QUEUE_SIZE - 1;
+        }
+        cqe_cid = completion_arr[index].command_id;
+        Scheduler::yield();
     } while (cid != cqe_cid);
 
     auto status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
@@ -138,9 +147,6 @@ u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
 
 void NVMEQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
 {
-
-    // TODO: count should be 16 bits Figure 372 1.4 Spec
-
     nvme_submission sub {};
     SpinlockLocker m_lock(m_request_lock);
     m_current_request = request;
@@ -159,8 +165,6 @@ void NVMEQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 
 
 void NVMEQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
 {
-
-    // TODO: count should be 16 bits Figure 372 1.4 Spec
     nvme_submission sub {};
     SpinlockLocker m_lock(m_request_lock);
     m_current_request = request;

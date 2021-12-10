@@ -274,7 +274,7 @@ void NVMEController::create_io_queue(u8 irq, u8 qid)
         // TODO: For now using pin based interrupts. Clear the first 16 bits
         // to use pin-based interrupts. NVMe spec 1.4, section 5.3
         sub.cdw11 = AK::convert_between_host_and_little_endian(flags & 0xFFFF);
-        submit_admin_command(sub);
+        submit_admin_command(sub, true);
     }
     {
         sub.op = OP_ADMIN_CREATE_SUBMISSION_QUEUE;
@@ -284,7 +284,7 @@ void NVMEController::create_io_queue(u8 irq, u8 qid)
         auto flags = QUEUE_IRQ_ENABLED | QUEUE_PHY_CONTIGUOUS;
         // The qid used below points to the completion queue qid NVMe spec 1.4, section 5.4
         sub.cdw11 = AK::convert_between_host_and_little_endian(qid << 16 | flags);
-        submit_admin_command(sub);
+        submit_admin_command(sub, true);
     }
 
     m_queues.append(NVMEQueue::create(qid, irq, IO_QUEUE_SIZE, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, m_controller_regs));
