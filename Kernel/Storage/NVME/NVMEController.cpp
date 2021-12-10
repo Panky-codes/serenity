@@ -37,7 +37,7 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     auto bar_len = round_up_to_power_of_two(CTRL_REG_SIZE(nr_of_queues), 4096);
     auto region_or_error = MM.allocate_kernel_region(PhysicalAddress(bar), bar_len, "PCI NVMe BAR", Memory::Region::Access::ReadWrite);
     if (region_or_error.is_error())
-        dbgln("Failed to map NVMe BAR");
+        dmesgln("Failed to map NVMe BAR0");
     // Queues need access to the doorbell registers, hence leaking the pointer
     m_controller_regs = region_or_error.release_value().leak_ptr();
     void* ptr = m_controller_regs->vaddr().as_ptr();
@@ -135,15 +135,15 @@ void NVMEController::identify_and_init_namespaces()
     {
         nvme_submission sub {};
         u16 status = 0;
-        for (auto ns : active_namespace_list) {
+        for (auto nsid : active_namespace_list) {
             memset(prp_dma_region->vaddr().as_ptr(), 0, NVME_IDENTIFY_SIZE);
             // Invalid NS
-            if (ns == 0)
+            if (nsid == 0)
                 break;
             sub.op = OP_ADMIN_IDENTIFY;
             sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(prp_dma_buffer->paddr().as_ptr()));
             sub.cdw10 = NVME_CNS_ID_NS & 0xff;
-            sub.nsid = ns;
+            sub.nsid = nsid;
             status = submit_admin_command(sub, true);
             if (status) {
                 dmesgln("Failed identify active namespace command");
@@ -153,11 +153,14 @@ void NVMEController::identify_and_init_namespaces()
                 VERIFY_NOT_REACHED();
             }
             auto val = get_ns_features(namespace_data_struct);
-            auto lba = 1 << val.get<1>();
-            dbgln("Nsize is {} and lba is {}", val.get<0>(), lba);
+            auto block_counts = val.get<0>();
+            auto block_size = 1 << val.get<1>();
 
-            m_namespaces.append(NVMENameSpace::create(m_queues, ns, val.get<0>(), lba));
+            dbgln_if(NVME_DEBUG, "NVMe: Block count is {} and Block size is {}", block_counts, block_size);
+
+            m_namespaces.append(NVMENameSpace::create(m_queues, nsid, val.get<0>(), block_size));
             m_device_count++;
+            dbgln_if(NVME_DEBUG, "NVMe: Initialized namespace with NSID: {}", nsid);
         }
     }
 }
@@ -232,6 +235,7 @@ void NVMEController::create_admin_queue(u8 irq)
     start_controller();
     set_admin_queue_ready_flag();
     m_admin_queue->enable_interrupts();
+    dbgln_if(NVME_DEBUG, "NVMe: Admin queue created");
 }
 void NVMEController::create_io_queue(u8 irq, u8 qid)
 {
@@ -286,5 +290,6 @@ void NVMEController::create_io_queue(u8 irq, u8 qid)
     m_queues.append(NVMEQueue::create(qid, irq, IO_QUEUE_SIZE, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, m_controller_regs));
     // TODO: Interrupts should be enabled towards the end i.e after ns creation?
     m_queues.last().enable_interrupts();
+    dbgln_if(NVME_DEBUG, "NVMe: Created IO Queue with QID{}", m_queues.size());
 }
 }

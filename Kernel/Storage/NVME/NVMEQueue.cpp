@@ -80,9 +80,7 @@ bool NVMEQueue::handle_irq(const RegisterState&)
         ++nr_of_processed_cqes;
         status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
         cmdid = completion_arr[cq_head].command_id;
-        //        dbgln("CQ_HEAD: {} in handle irq", cq_head);
-        //        dbgln("CMD ID: {} in handle irq", cmdid);
-        //        dbgln("Status field is: {:x}", status);
+        dbgln_if(NVME_DEBUG, "NVMe: Completion with status {:x} and command identifier {}. CQ_HEAD: {}", status, cmdid, cq_head);
         if (m_admin_queue == false && cmdid == prev_sq_tail) {
             SpinlockLocker lock(m_request_lock);
             if (m_current_request) {
@@ -101,7 +99,7 @@ void NVMEQueue::submit_sqe(struct nvme_submission& sub)
     SpinlockLocker lock(m_sq_lock);
     sub.cmdid = sq_tail;
     prev_sq_tail = sq_tail;
-//    AK::dbgln("CID in submit_sqe is: {}", sub.cmdid);
+
     auto* submission_arr = reinterpret_cast<nvme_submission*>(m_sq_dma_region->vaddr().as_ptr());
 
     memcpy(&submission_arr[sq_tail], &sub, sizeof(nvme_submission));
@@ -112,6 +110,8 @@ void NVMEQueue::submit_sqe(struct nvme_submission& sub)
         else
             sq_tail = temp_sq_tail;
     }
+
+    dbgln_if(NVME_DEBUG, "NVMe: Submission with command identifier {}. SQ_TAIL: {}", sub.cmdid, sq_tail);
     AK::full_memory_barrier();
     update_sq_doorbell();
 }
