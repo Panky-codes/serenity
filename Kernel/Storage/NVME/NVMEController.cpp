@@ -40,16 +40,16 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
         dmesgln("Failed to map NVMe BAR0");
     // Queues need access to the doorbell registers, hence leaking the pointer
     m_controller_regs = region_or_error.release_value().leak_ptr();
-    void* ptr = m_controller_regs->vaddr().as_ptr();
-    VERIFY((*static_cast<u16*>(ptr)) == 2047); // TODO: Remove this
 
     create_admin_queue(irq);
     VERIFY(m_admin_queue_ready == true);
+
+    u8* ctrl_regs_ptr = m_controller_regs->vaddr().as_ptr();
+    VERIFY(IO_QUEUE_SIZE < (*reinterpret_cast<u16*>(ctrl_regs_ptr + CC_CAP)));
     for (u32 cpuid = 0; cpuid < nr_of_queues; ++cpuid) {
         // qid is zero is used for admin queue
         create_io_queue(irq, cpuid + 1);
     }
-
     identify_and_init_namespaces();
 }
 

@@ -17,6 +17,7 @@ struct nvme_submission;
 #define CTRL_REG_SIZE(NR_OF_QUEUES) (REG_SQ0TDBL_END + ((NR_OF_QUEUES) * (4 << CAP_DSTRD)))
 
 // CC – Controller Configuration
+#define CC_CAP 0x0    // Offset 14h: CC – Controller Capabilities
 #define CC_REG 0x14   // Offset 14h: CC – Controller Configuration
 #define CSTS_REG 0x1C // Offset 1Ch: CSTS – Controller Status
 #define CC_ASQ 0x28   // Offset 28h: ASQ – Admin Submission Queue Base Address
