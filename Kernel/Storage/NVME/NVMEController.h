@@ -5,8 +5,8 @@
  */
 #pragma once
 
-#include <AK/NonnullRefPtrVector.h>
 #include <AK/NonnullRefPtr.h>
+#include <AK/NonnullRefPtrVector.h>
 #include <AK/OwnPtr.h>
 #include <AK/RefPtr.h>
 #include <AK/Tuple.h>
@@ -33,6 +33,18 @@ protected:
     bool reset() override;
     bool shutdown() override;
     void complete_current_request(AsyncDeviceRequest::RequestResult result) override;
+    template<typename T>
+    void set_ctrl_regs(u32 offset, T val)
+    {
+        u8* ptr = m_controller_regs->vaddr().as_ptr();
+        *reinterpret_cast<T*>(ptr + offset) = val;
+    }
+    template<typename T>
+    T get_ctrl_regs(u32 offset)
+    {
+        u8* ptr = m_controller_regs->vaddr().as_ptr();
+        return *reinterpret_cast<T*>(ptr + offset);
+    }
 
 public:
     void reset_controller();
@@ -55,7 +67,7 @@ public:
 
 private:
     void identify_and_init_namespaces();
-    Tuple<u64, u8> get_ns_features(Array<u8, NVME_IDENTIFY_SIZE>& identify_data_struct);
+    Tuple<u64, u8> get_ns_features(ByteBuffer& identify_data_struct);
     void test_rw_functionality();
     void create_admin_queue(u8 irq);
     void create_io_queue(u8 irq, u8 qid);

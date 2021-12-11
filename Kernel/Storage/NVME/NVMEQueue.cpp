@@ -12,7 +12,7 @@
 
 namespace Kernel {
 // TODO: Move this to generally memory manager
-ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page)
+ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page)
 {
     dma_buffer_page = MM.allocate_supervisor_physical_page();
     if (dma_buffer_page.is_null())
@@ -43,7 +43,8 @@ NVMEQueue::NVMEQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma
     , m_current_request(nullptr)
 
 {
-
+    m_sqe_array = {reinterpret_cast<nvme_submission*>(m_sq_dma_region->vaddr().as_ptr()), m_qdepth};
+    m_cqe_array = {reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr()), m_qdepth};
     // DMA region for RW operation. For now the requests don't exceed more than 4096 bytes(Storage device takes of it)
     if (auto buffer = dma_alloc_buffer(PAGE_SIZE, "Admin CQ queue", Memory::Region::Access::ReadWrite, m_rw_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
@@ -55,8 +56,7 @@ NVMEQueue::NVMEQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma
 
 bool NVMEQueue::cqe_available()
 {
-    auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
-    return PHASE_TAG(completion_arr[cq_head].status) == cq_valid_phase;
+    return PHASE_TAG(m_cqe_array[cq_head].status) == cq_valid_phase;
 }
 void NVMEQueue::update_cqe_head()
 {
@@ -76,13 +76,14 @@ bool NVMEQueue::handle_irq(const RegisterState&)
     while (cqe_available()) {
         u16 status;
         u16 cmdid;
-        auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
         ++nr_of_processed_cqes;
-        status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
-        cmdid = completion_arr[cq_head].command_id;
+        status = CQ_STATUS_FIELD(m_cqe_array[cq_head].status);
+        cmdid = m_cqe_array[cq_head].command_id;
         dbgln_if(NVME_DEBUG, "NVMe: Completion with status {:x} and command identifier {}. CQ_HEAD: {}", status, cmdid, cq_head);
+        //TODO: We don't use AsyncBlockDevice requests for admin queue as it is only applicable for a block device (NVMe namespace)
+        // But admin commands precedes namespace creation. Unify requests to avoid special conditions
         if (m_admin_queue == false) {
-            // As the block layer calls are now sync,
+            // As the block layer calls are now sync (as we wait on each requests),
             // everything is operated on a single request similar to BMIDE driver.
             // TODO: Remove this constraint eventually.
             VERIFY(cmdid == prev_sq_tail);
@@ -105,9 +106,7 @@ void NVMEQueue::submit_sqe(struct nvme_submission& sub)
     sub.cmdid = sq_tail;
     prev_sq_tail = sq_tail;
 
-    auto* submission_arr = reinterpret_cast<nvme_submission*>(m_sq_dma_region->vaddr().as_ptr());
-
-    memcpy(&submission_arr[sq_tail], &sub, sizeof(nvme_submission));
+    memcpy(&m_sqe_array[sq_tail], &sub, sizeof(nvme_submission));
     {
         u32 temp_sq_tail = sq_tail + 1;
         if (temp_sq_tail == m_qdepth)
@@ -117,13 +116,12 @@ void NVMEQueue::submit_sqe(struct nvme_submission& sub)
     }
 
     dbgln_if(NVME_DEBUG, "NVMe: Submission with command identifier {}. SQ_TAIL: {}", sub.cmdid, sq_tail);
-    AK::full_memory_barrier();
+    full_memory_barrier();
     update_sq_doorbell();
 }
 
 u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
 {
-    auto* completion_arr = reinterpret_cast<nvme_completion*>(m_cq_dma_region->vaddr().as_ptr());
     // For now let's use sq tail as a unique command id.
     u16 cqe_cid;
     u16 cid = sq_tail;
@@ -137,11 +135,11 @@ u16 NVMEQueue::submit_sync_sqe(nvme_submission& sub)
             if (index < 0)
                 index = IO_QUEUE_SIZE - 1;
         }
-        cqe_cid = completion_arr[index].command_id;
+        cqe_cid = m_cqe_array[index].command_id;
         Scheduler::yield();
     } while (cid != cqe_cid);
 
-    auto status = CQ_STATUS_FIELD(completion_arr[cq_head].status);
+    auto status = CQ_STATUS_FIELD(m_cqe_array[cq_head].status);
     return status;
 }
 
@@ -159,7 +157,7 @@ void NVMEQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 
     sub.cdw12 = AK::convert_between_host_and_little_endian((count - 1) & 0xFFFF);
     sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(m_rw_dma_page->paddr().as_ptr()));
 
-    AK::full_memory_barrier();
+    full_memory_barrier();
     submit_sqe(sub);
 }
 
@@ -181,7 +179,7 @@ void NVMEQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32
     sub.cdw12 = AK::convert_between_host_and_little_endian((count - 1) & 0xFFFF);
     sub.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(m_rw_dma_page->paddr().as_ptr()));
 
-    AK::full_memory_barrier();
+    full_memory_barrier();
     submit_sqe(sub);
 }
 
@@ -196,6 +194,7 @@ void NVMEQueue::complete_current_request(u16 status)
         if (status) {
             lock.unlock();
             current_request->complete(AsyncBlockDeviceRequest::Failure);
+            return;
         }
         if (current_request->request_type() == AsyncBlockDeviceRequest::RequestType::Read) {
             if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), 512 * current_request->block_count()); result.is_error()) {
@@ -206,6 +205,7 @@ void NVMEQueue::complete_current_request(u16 status)
         }
         lock.unlock();
         current_request->complete(AsyncDeviceRequest::Success);
+        return;
     });
 }
 }

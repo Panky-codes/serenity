@@ -45,7 +45,7 @@ void NVMENameSpace::test_read()
 {
     for (int i = 0; i < 100; i++) {
 
-        AK::Array<u8, 4096> buf {};
+        Array<u8, 4096> buf {};
         auto index = i;
         auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());
         auto read_request_or_error = try_make_request<AsyncBlockDeviceRequest>(AsyncBlockDeviceRequest::Read, index, 1, uk_buf, 512);
@@ -77,7 +77,7 @@ void NVMENameSpace::test_write()
 {
     for (int i = 0; i < 100; i++) {
 
-        AK::Array<u8, 4096> buf {};
+        Array<u8, 4096> buf {};
         auto index = i;
         buf[1] = 9;
         auto uk_buf = UserOrKernelBuffer::for_kernel_buffer(buf.data());

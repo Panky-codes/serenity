@@ -17,11 +17,12 @@
 #include <Kernel/Storage/NVME/NVMEDefinitions.h>
 
 namespace Kernel {
-ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, AK::StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
+//TODO: Move this to memory manager
+ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
 
 class AsyncBlockDeviceRequest;
 class NVMEQueue : public IRQHandler
-    , public AK::RefCounted<NVMEQueue> {
+    , public RefCounted<NVMEQueue> {
 AK_MAKE_ETERNAL
 public:
     static NonnullRefPtr<NVMEQueue> create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
@@ -58,15 +59,16 @@ private:
     u16 prev_sq_tail {};
     u16 cq_head;
     bool m_admin_queue;
-    // TODO: need to find a better way of getting this
     u8 m_irq;
     u32 m_qdepth;
     Spinlock m_cq_lock { LockRank::Interrupts };
     Spinlock m_sq_lock { LockRank::Interrupts };
     OwnPtr<Memory::Region> m_cq_dma_region;
     RefPtr<Memory::PhysicalPage> m_cq_dma_page;
+    Span<nvme_submission> m_sqe_array;
     OwnPtr<Memory::Region> m_sq_dma_region;
     RefPtr<Memory::PhysicalPage> m_sq_dma_page;
+    Span<nvme_completion> m_cqe_array;
     OwnPtr<Memory::Region> m_rw_dma_region;
     Memory::Region* m_db_regs;
     RefPtr<Memory::PhysicalPage> m_rw_dma_page;

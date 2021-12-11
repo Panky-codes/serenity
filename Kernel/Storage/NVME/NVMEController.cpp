@@ -36,16 +36,20 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     auto bar = PCI::get_BAR0(device_identifier.address()) & 0xFFFFFFF0;
     auto bar_len = round_up_to_power_of_two(CTRL_REG_SIZE(nr_of_queues), 4096);
     auto region_or_error = MM.allocate_kernel_region(PhysicalAddress(bar), bar_len, "PCI NVMe BAR", Memory::Region::Access::ReadWrite);
-    if (region_or_error.is_error())
+    if (region_or_error.is_error()) {
         dmesgln("Failed to map NVMe BAR0");
+        VERIFY_NOT_REACHED();
+    }
     // Queues need access to the doorbell registers, hence leaking the pointer
     m_controller_regs = region_or_error.release_value().leak_ptr();
 
     create_admin_queue(irq);
     VERIFY(m_admin_queue_ready == true);
 
-    u8* ctrl_regs_ptr = m_controller_regs->vaddr().as_ptr();
-    VERIFY(IO_QUEUE_SIZE < (*reinterpret_cast<u16*>(ctrl_regs_ptr + CC_CAP)));
+    VERIFY(IO_QUEUE_SIZE <  get_ctrl_regs<u16>(CC_CAP));
+    dbgln_if(NVME_DEBUG, "NVMe: IO queue depth is: {}", IO_QUEUE_SIZE);
+
+    // Create an IO queue per core
     for (u32 cpuid = 0; cpuid < nr_of_queues; ++cpuid) {
         // qid is zero is used for admin queue
         create_io_queue(irq, cpuid + 1);
@@ -56,57 +60,55 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
 void NVMEController::reset_controller()
 {
     volatile u32 cc, csts;
-    u8* ptr = m_controller_regs->vaddr().as_ptr();
-    csts = *reinterpret_cast<u32*>(ptr + CSTS_REG);
+    csts = get_ctrl_regs<u32>(CSTS_REG);
     VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x1);
 
-    cc = *reinterpret_cast<u32*>(ptr + CC_REG);
+    cc = get_ctrl_regs<u32>(CC_REG);
     cc = cc & ~(1 << CC_EN_BIT);
 
-    *reinterpret_cast<u32*>(ptr + CC_REG) = cc;
+    set_ctrl_regs(CC_REG, cc);
 
-    IO::delay(100);
-    AK::full_memory_barrier();
+    IO::delay(10);
+    full_memory_barrier();
 
-    csts = *reinterpret_cast<u32*>(ptr + CSTS_REG);
+    csts = get_ctrl_regs<u32>(CSTS_REG);
     VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x0);
 }
 
 void NVMEController::start_controller()
 {
     volatile u32 cc, csts;
-    u8* ptr = m_controller_regs->vaddr().as_ptr();
-    csts = *reinterpret_cast<u32*>(ptr + CSTS_REG);
+    csts = get_ctrl_regs<u32>(CSTS_REG);
     VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x0);
 
-    cc = *reinterpret_cast<u32*>(ptr + CC_REG);
+    cc = get_ctrl_regs<u32>(CC_REG);
 
     cc = cc | (1 << CC_EN_BIT);
     cc = cc | (CQ_WIDTH << CC_IOCQES_BIT);
     cc = cc | (SQ_WIDTH << CC_IOSQES_BIT);
 
-    *reinterpret_cast<u32*>(ptr + CC_REG) = cc;
+    set_ctrl_regs(CC_REG, cc);
 
-    IO::delay(100);
-    AK::full_memory_barrier();
-    csts = *reinterpret_cast<u32*>(ptr + CSTS_REG);
+    IO::delay(10);
+    full_memory_barrier();
+    csts = get_ctrl_regs<u32>(CSTS_REG);
     VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x1);
 }
 u32 NVMEController::get_admin_q_dept()
 {
-    u32 aqa = *reinterpret_cast<u32*>(m_controller_regs->vaddr().as_ptr() + CC_AQA);
+    u32 aqa = get_ctrl_regs<u32>(CC_AQA);
     // Queue depth is 0 based
-    return min(ACQ_SIZE(aqa), ASQ_SIZE(aqa)) + 1;
+    u32 q_depth = min(ACQ_SIZE(aqa), ASQ_SIZE(aqa)) + 1;
+    dbgln_if(NVME_DEBUG, "NVMe: Admin queue depth is {}", q_depth);
+    return q_depth;
 }
 void NVMEController::identify_and_init_namespaces()
 {
 
     RefPtr<Memory::PhysicalPage> prp_dma_buffer;
     OwnPtr<Memory::Region> prp_dma_region;
-    AK::Array<u8, NVME_IDENTIFY_SIZE> namespace_data_struct;
+    auto namespace_data_struct = ByteBuffer::create_zeroed(NVME_IDENTIFY_SIZE).release_value();
     u32 active_namespace_list[NVME_IDENTIFY_SIZE / sizeof(u32)];
-    // TODO: Without this print stuff breaks in **KVM** mode
-    dbgln("Identify namespaces");
 
     if (auto buffer = dma_alloc_buffer(NVME_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
@@ -164,12 +166,11 @@ void NVMEController::identify_and_init_namespaces()
         }
     }
 }
-Tuple<u64, u8> NVMEController::get_ns_features(Array<u8, 4096>& identify_data_struct)
+Tuple<u64, u8> NVMEController::get_ns_features(ByteBuffer& identify_data_struct)
 {
     auto flbas = identify_data_struct[26] & 0xf;
-    // FIXME: Is there a better way of retreiving the information instead of casts?
-    auto namespace_size = *reinterpret_cast<u64*>(identify_data_struct.data());
-    auto lba_format = *reinterpret_cast<u32*>((identify_data_struct.data() + 128 + (4 * flbas)));
+    auto namespace_size = *reinterpret_cast<u64*>(identify_data_struct.offset_pointer(0));
+    auto lba_format = *reinterpret_cast<u32*>((identify_data_struct.offset_pointer( 128 + (4 * flbas))));
 
     auto lba_size = (lba_format & 0x00ff0000) >> 16;
     return Tuple<u64, u8>(namespace_size, lba_size);
@@ -288,7 +289,6 @@ void NVMEController::create_io_queue(u8 irq, u8 qid)
     }
 
     m_queues.append(NVMEQueue::create(qid, irq, IO_QUEUE_SIZE, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, m_controller_regs));
-    // TODO: Interrupts should be enabled towards the end i.e after ns creation?
     m_queues.last().enable_interrupts();
     dbgln_if(NVME_DEBUG, "NVMe: Created IO Queue with QID{}", m_queues.size());
 }
