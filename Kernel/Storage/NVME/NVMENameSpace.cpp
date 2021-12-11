@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
+
 #include "NVMENameSpace.h"
 #include <AK/NonnullOwnPtr.h>
 #include <Kernel/Storage/NVME/NVMENameSpace.h>
@@ -14,7 +15,6 @@ NonnullRefPtr<NVMENameSpace> NVMENameSpace::create(NonnullRefPtrVector<NVMEQueue
 {
     auto minor_number = StorageManagement::minor_number();
     auto major_number = StorageManagement::major_number();
-    // TODO: For now we are assuming only one controller is there. Name format nvme<ctrlid>n<nsid>
     auto device_name = String::formatted("nvme0n{:d}", nsid);
     auto device_name_kstring = KString::must_create(device_name.view());
     return adopt_ref(*new NVMENameSpace(queues, storage_size, lba_size, major_number, minor_number, nsid, move(device_name_kstring)));
@@ -33,6 +33,8 @@ void NVMENameSpace::start_request(AsyncBlockDeviceRequest& request)
 {
     auto index = Processor::current_id();
     auto& queue = m_queues.at(index);
+    // TODO: For now we support only IO transfers of size PAGE_SIZE (Going along with the current constraint in the block layer)
+    // Eventually remove this constraint by using the PRP2 field in the submission struct and remove block layer constraint for NVMe driver.
     VERIFY(request.block_count() <= (PAGE_SIZE / block_size()));
 
     if (request.request_type() == AsyncBlockDeviceRequest::Read) {

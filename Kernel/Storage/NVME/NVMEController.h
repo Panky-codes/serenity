@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
+
 #pragma once
 
 #include <AK/NonnullRefPtr.h>
@@ -47,8 +48,8 @@ protected:
     }
 
 public:
-    void reset_controller();
-    void start_controller();
+    bool reset_controller();
+    bool start_controller();
     u32 get_admin_q_dept();
     void write64_controller_regs(u32 offset, u64 value) { *reinterpret_cast<u64*>(m_controller_regs->vaddr().as_ptr() + offset) = value; };
 

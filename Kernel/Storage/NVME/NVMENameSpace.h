@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
+
 #pragma once
 
 #include "AK/kmalloc.h"
@@ -18,9 +19,8 @@
 #include <Kernel/Storage/StorageDevice.h>
 
 namespace Kernel {
-class NVMENameSpace : public StorageDevice
-{
-  AK_MAKE_ETERNAL
+class NVMENameSpace : public StorageDevice {
+    AK_MAKE_ETERNAL
 
 public:
     static NonnullRefPtr<NVMENameSpace> create(NonnullRefPtrVector<NVMEQueue> queues, u16 nsid, size_t storage_size, size_t lba_size);
@@ -30,7 +30,6 @@ public:
     void start_request(AsyncBlockDeviceRequest& request) override;
     void test_read();
     void test_write();
-
 
 private:
     u16 m_nsid;

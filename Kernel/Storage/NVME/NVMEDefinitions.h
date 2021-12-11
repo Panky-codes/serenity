@@ -3,9 +3,11 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
+
 #pragma once
-#include <AK/Types.h>
+
 #include <AK/Endian.h>
+#include <AK/Types.h>
 struct nvme_completion;
 struct nvme_submission;
 

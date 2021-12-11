@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
+
 #pragma once
 
 #include <AK/NonnullRefPtrVector.h>
@@ -17,24 +18,22 @@
 #include <Kernel/Storage/NVME/NVMEDefinitions.h>
 
 namespace Kernel {
-//TODO: Move this to memory manager
-ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
 
 class AsyncBlockDeviceRequest;
 class NVMEQueue : public IRQHandler
     , public RefCounted<NVMEQueue> {
-AK_MAKE_ETERNAL
+    AK_MAKE_ETERNAL
 public:
     static NonnullRefPtr<NVMEQueue> create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
     explicit NVMEQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
-    void submit_sqe(struct nvme_submission &);
+    void submit_sqe(struct nvme_submission&);
     u16 submit_sync_sqe(struct nvme_submission&);
     void read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
     void write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
-    void enable_interrupts() {enable_irq();};
-    void disable_interrupts() {disable_irq();};
+    void enable_interrupts() { enable_irq(); };
+    void disable_interrupts() { disable_irq(); };
 
 private:
     bool cqe_available();
@@ -74,6 +73,5 @@ private:
     RefPtr<Memory::PhysicalPage> m_rw_dma_page;
     Spinlock m_request_lock;
     RefPtr<AsyncBlockDeviceRequest> m_current_request;
-
 };
 }

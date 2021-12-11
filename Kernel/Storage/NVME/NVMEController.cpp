@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
+
 #include "NVMEController.h"
 #include "AK/Format.h"
 #include <AK/RefPtr.h>
@@ -46,7 +47,7 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     create_admin_queue(irq);
     VERIFY(m_admin_queue_ready == true);
 
-    VERIFY(IO_QUEUE_SIZE <  get_ctrl_regs<u16>(CC_CAP));
+    VERIFY(IO_QUEUE_SIZE < get_ctrl_regs<u16>(CC_CAP));
     dbgln_if(NVME_DEBUG, "NVMe: IO queue depth is: {}", IO_QUEUE_SIZE);
 
     // Create an IO queue per core
@@ -57,11 +58,13 @@ NVMEController::NVMEController(const PCI::DeviceIdentifier& device_identifier)
     identify_and_init_namespaces();
 }
 
-void NVMEController::reset_controller()
+// NVMe Spec 1.4: Section 7.3.2
+bool NVMEController::reset_controller()
 {
     volatile u32 cc, csts;
     csts = get_ctrl_regs<u32>(CSTS_REG);
-    VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x1);
+    if ((csts & (1 << CSTS_RDY_BIT)) != 0x1)
+        return false;
 
     cc = get_ctrl_regs<u32>(CC_REG);
     cc = cc & ~(1 << CC_EN_BIT);
@@ -72,14 +75,19 @@ void NVMEController::reset_controller()
     full_memory_barrier();
 
     csts = get_ctrl_regs<u32>(CSTS_REG);
-    VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x0);
+    if ((csts & (1 << CSTS_RDY_BIT)) != 0x0)
+        return false;
+
+    return true;
 }
 
-void NVMEController::start_controller()
+// NVMe Spec 1.4: Section 7.3.2
+bool NVMEController::start_controller()
 {
     volatile u32 cc, csts;
     csts = get_ctrl_regs<u32>(CSTS_REG);
-    VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x0);
+    if ((csts & (1 << CSTS_RDY_BIT)) != 0x0)
+        return false;
 
     cc = get_ctrl_regs<u32>(CC_REG);
 
@@ -92,7 +100,10 @@ void NVMEController::start_controller()
     IO::delay(10);
     full_memory_barrier();
     csts = get_ctrl_regs<u32>(CSTS_REG);
-    VERIFY((csts & (1 << CSTS_RDY_BIT)) == 0x1);
+    if ((csts & (1 << CSTS_RDY_BIT)) != 0x1)
+        return false;
+
+    return true;
 }
 u32 NVMEController::get_admin_q_dept()
 {
@@ -110,7 +121,7 @@ void NVMEController::identify_and_init_namespaces()
     auto namespace_data_struct = ByteBuffer::create_zeroed(NVME_IDENTIFY_SIZE).release_value();
     u32 active_namespace_list[NVME_IDENTIFY_SIZE / sizeof(u32)];
 
-    if (auto buffer = dma_alloc_buffer(NVME_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(NVME_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         // TODO:Need to figure out better error propagation
         VERIFY_NOT_REACHED();
@@ -126,7 +137,7 @@ void NVMEController::identify_and_init_namespaces()
         sub.cdw10 = NVME_CNS_ID_ACTIVE_NS & 0xff;
         status = submit_admin_command(sub, true);
         if (status) {
-            dmesgln("Failed identify active namespace command");
+            dmesgln("Failed to identify active namespace command");
             VERIFY_NOT_REACHED();
         }
         if (void* fault_at; !safe_memcpy(active_namespace_list, prp_dma_region->vaddr().as_ptr(), NVME_IDENTIFY_SIZE, fault_at)) {
@@ -148,7 +159,7 @@ void NVMEController::identify_and_init_namespaces()
             sub.nsid = nsid;
             status = submit_admin_command(sub, true);
             if (status) {
-                dmesgln("Failed identify active namespace command");
+                dmesgln("Failed identify namespace with nsid {}", nsid);
                 VERIFY_NOT_REACHED();
             }
             if (void* fault_at; !safe_memcpy(namespace_data_struct.data(), prp_dma_region->vaddr().as_ptr(), NVME_IDENTIFY_SIZE, fault_at)) {
@@ -170,7 +181,7 @@ Tuple<u64, u8> NVMEController::get_ns_features(ByteBuffer& identify_data_struct)
 {
     auto flbas = identify_data_struct[26] & 0xf;
     auto namespace_size = *reinterpret_cast<u64*>(identify_data_struct.offset_pointer(0));
-    auto lba_format = *reinterpret_cast<u32*>((identify_data_struct.offset_pointer( 128 + (4 * flbas))));
+    auto lba_format = *reinterpret_cast<u32*>((identify_data_struct.offset_pointer(128 + (4 * flbas))));
 
     auto lba_size = (lba_format & 0x00ff0000) >> 16;
     return Tuple<u64, u8>(namespace_size, lba_size);
@@ -186,8 +197,11 @@ size_t NVMEController::devices_count() const
 }
 bool NVMEController::reset()
 {
-    TODO();
-    return false;
+    if (!reset_controller())
+        return false;
+    if (!start_controller())
+        return false;
+    return true;
 }
 bool NVMEController::shutdown()
 {
@@ -212,16 +226,19 @@ void NVMEController::create_admin_queue(u8 irq)
     RefPtr<Memory::PhysicalPage> sq_dma_page;
     auto cq_size = round_up_to_power_of_two(CQ_SIZE(qdepth), 4096);
     auto sq_size = round_up_to_power_of_two(SQ_SIZE(qdepth), 4096);
-    reset_controller();
+    if (!reset_controller()) {
+        dmesgln("Failed to reset the NVMe controller");
+        VERIFY_NOT_REACHED();
+    }
 
-    if (auto buffer = dma_alloc_buffer(cq_size, "Admin CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(cq_size, "Admin CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         VERIFY_NOT_REACHED();
     } else {
         cq_dma_region = buffer.release_value();
     }
 
-    if (auto buffer = dma_alloc_buffer(sq_size, "Admin SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(sq_size, "Admin SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         VERIFY_NOT_REACHED();
     } else {
@@ -233,7 +250,10 @@ void NVMEController::create_admin_queue(u8 irq)
     write64_controller_regs(CC_ACQ, reinterpret_cast<u64>(cq_dma_page->paddr().as_ptr()));
     write64_controller_regs(CC_ASQ, reinterpret_cast<u64>(sq_dma_page->paddr().as_ptr()));
 
-    start_controller();
+    if (!start_controller()) {
+        dmesgln("Failed to restart the NVMe controller");
+        VERIFY_NOT_REACHED();
+    }
     set_admin_queue_ready_flag();
     m_admin_queue->enable_interrupts();
     dbgln_if(NVME_DEBUG, "NVMe: Admin queue created");
@@ -249,7 +269,7 @@ void NVMEController::create_io_queue(u8 irq, u8 qid)
     auto sq_size = round_up_to_power_of_two(SQ_SIZE(IO_QUEUE_SIZE), 4096);
 
     VERIFY(sizeof(nvme_submission) == (1 << SQ_WIDTH));
-    if (auto buffer = dma_alloc_buffer(cq_size, "IO CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(cq_size, "IO CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for IO CQ queue");
         VERIFY_NOT_REACHED();
     } else {
@@ -259,7 +279,7 @@ void NVMEController::create_io_queue(u8 irq, u8 qid)
     // so that we don't get any garbage phase bit value
     memset(cq_dma_region->vaddr().as_ptr(), 0, cq_size);
 
-    if (auto buffer = dma_alloc_buffer(sq_size, "IO SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(sq_size, "IO SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for IO CQ queue");
         VERIFY_NOT_REACHED();
     } else {
