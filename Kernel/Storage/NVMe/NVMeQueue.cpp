@@ -12,15 +12,6 @@
 #include <Kernel/WorkQueue.h>
 
 namespace Kernel {
-// TODO: Move this to generally memory manager
-ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page)
-{
-    dma_buffer_page = MM.allocate_supervisor_physical_page();
-    if (dma_buffer_page.is_null())
-        return ENOMEM;
-    auto region_or_error = MM.allocate_kernel_region(dma_buffer_page->paddr(), size, name, access);
-    return region_or_error;
-}
 
 NonnullRefPtr<NVMeQueue> NVMeQueue::create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
 {
@@ -47,7 +38,7 @@ NVMeQueue::NVMeQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma
     m_sqe_array = { reinterpret_cast<NVMeSubmission*>(m_sq_dma_region->vaddr().as_ptr()), m_qdepth };
     m_cqe_array = { reinterpret_cast<NVMeCompletion*>(m_cq_dma_region->vaddr().as_ptr()), m_qdepth };
     // DMA region for RW operation. For now the requests don't exceed more than 4096 bytes(Storage device takes of it)
-    if (auto buffer = dma_alloc_buffer(PAGE_SIZE, "Admin CQ queue", Memory::Region::Access::ReadWrite, m_rw_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(PAGE_SIZE, "Admin CQ queue", Memory::Region::Access::ReadWrite, m_rw_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         VERIFY_NOT_REACHED();
     } else {

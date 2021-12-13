@@ -123,7 +123,7 @@ void NVMeController::identify_and_init_namespaces()
     auto namespace_data_struct = ByteBuffer::create_zeroed(NVMe_IDENTIFY_SIZE).release_value();
     u32 active_namespace_list[NVMe_IDENTIFY_SIZE / sizeof(u32)];
 
-    if (auto buffer = dma_alloc_buffer(NVMe_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(NVMe_IDENTIFY_SIZE, "Identify PRP", Memory::Region::Access::ReadWrite, prp_dma_buffer); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         // TODO:Need to figure out better error propagation
         VERIFY_NOT_REACHED();
@@ -233,14 +233,14 @@ void NVMeController::create_admin_queue(u8 irq)
         VERIFY_NOT_REACHED();
     }
 
-    if (auto buffer = dma_alloc_buffer(cq_size, "Admin CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(cq_size, "Admin CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         VERIFY_NOT_REACHED();
     } else {
         cq_dma_region = buffer.release_value();
     }
 
-    if (auto buffer = dma_alloc_buffer(sq_size, "Admin SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(sq_size, "Admin SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for ADMIN CQ queue");
         VERIFY_NOT_REACHED();
     } else {
@@ -271,7 +271,7 @@ void NVMeController::create_io_queue(u8 irq, u8 qid)
     auto sq_size = round_up_to_power_of_two(SQ_SIZE(IO_QUEUE_SIZE), 4096);
 
     VERIFY(sizeof(NVMeSubmission) == (1 << SQ_WIDTH));
-    if (auto buffer = dma_alloc_buffer(cq_size, "IO CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(cq_size, "IO CQ queue", Memory::Region::Access::ReadWrite, cq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for IO CQ queue");
         VERIFY_NOT_REACHED();
     } else {
@@ -281,7 +281,7 @@ void NVMeController::create_io_queue(u8 irq, u8 qid)
     // so that we don't get any garbage phase bit value
     memset(cq_dma_region->vaddr().as_ptr(), 0, cq_size);
 
-    if (auto buffer = dma_alloc_buffer(sq_size, "IO SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
+    if (auto buffer = MM.dma_allocate_buffer(sq_size, "IO SQ queue", Memory::Region::Access::ReadWrite, sq_dma_page); buffer.is_error()) {
         dmesgln("Failed to allocate memory for IO CQ queue");
         VERIFY_NOT_REACHED();
     } else {

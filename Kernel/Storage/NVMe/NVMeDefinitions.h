@@ -74,7 +74,6 @@ static constexpr u8 FLBA_SIZE_MASK = 0xf;
 static constexpr u8 LBA_FORMAT_SUPPORT_INDEX = 128;
 static constexpr u32 LBA_SIZE_MASK = 0x00ff0000;
 
-
 // OPCODES
 // NVMe spec 1.4 Section 5 ADMIN COMMAND SET
 enum AdminCommandOpCode {

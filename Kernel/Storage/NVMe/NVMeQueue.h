@@ -18,8 +18,6 @@
 #include <Kernel/Storage/NVMe/NVMeDefinitions.h>
 
 namespace Kernel {
-// TODO: Move this to memory manager
-ErrorOr<NonnullOwnPtr<Memory::Region>> dma_alloc_buffer(size_t size, StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page);
 
 class AsyncBlockDeviceRequest;
 class NVMeQueue : public IRQHandler

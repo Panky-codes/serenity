@@ -714,6 +714,15 @@ ErrorOr<NonnullOwnPtr<Region>> MemoryManager::allocate_contiguous_kernel_region(
     return allocate_kernel_region_with_vmobject(range, move(vmobject), name, access, cacheable);
 }
 
+ErrorOr<NonnullOwnPtr<Memory::Region>> MemoryManager::dma_allocate_buffer(size_t size, StringView name, Memory::Region::Access access, RefPtr<Memory::PhysicalPage>& dma_buffer_page)
+{
+    dma_buffer_page = allocate_supervisor_physical_page();
+    if (dma_buffer_page.is_null())
+        return ENOMEM;
+    auto region_or_error = allocate_kernel_region(dma_buffer_page->paddr(), size, name, access);
+    return region_or_error;
+}
+
 ErrorOr<NonnullOwnPtr<Region>> MemoryManager::allocate_kernel_region(size_t size, StringView name, Region::Access access, AllocationStrategy strategy, Region::Cacheable cacheable)
 {
     VERIFY(!(size % PAGE_SIZE));
