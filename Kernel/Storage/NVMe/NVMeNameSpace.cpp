@@ -12,16 +12,15 @@
 
 namespace Kernel {
 
-NonnullRefPtr<NVMeNameSpace> NVMeNameSpace::create(NonnullRefPtrVector<NVMeQueue> queues, u16 nsid, size_t storage_size, size_t lba_size)
+ErrorOr<NonnullRefPtr<NVMeNameSpace>> NVMeNameSpace::try_create(NonnullRefPtrVector<NVMeQueue> queues, u16 nsid, size_t storage_size, size_t lba_size)
 {
     auto minor_number = StorageManagement::minor_number();
     auto major_number = StorageManagement::major_number();
     auto device_name = String::formatted("nvme0n{:d}", nsid);
     auto device_name_kstring = KString::must_create(device_name.view());
-    auto device_or_error = DeviceManagement::try_create_device<NVMeNameSpace>(queues, storage_size, lba_size, major_number, minor_number, nsid, move(device_name_kstring));
-    VERIFY(!device_or_error.is_error());
+    auto device = TRY(DeviceManagement::try_create_device<NVMeNameSpace>(queues, storage_size, lba_size, major_number, minor_number, nsid, move(device_name_kstring)));
 
-    return device_or_error.release_value();
+    return device;
 }
 
 NVMeNameSpace::NVMeNameSpace(NonnullRefPtrVector<NVMeQueue> queues, size_t max_addresable_block, size_t lba_size, size_t major_number, size_t minor_number, u16 nsid, NonnullOwnPtr<KString> dev_name)

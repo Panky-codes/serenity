@@ -65,7 +65,12 @@ UNMAP_AFTER_INIT void StorageManagement::enumerate_controllers(bool force_pio)
         PCI::enumerate([&](PCI::DeviceIdentifier const& device_identifier) {
             if (device_identifier.class_code().value() == to_underlying(PCI::ClassID::MassStorage)
                 && device_identifier.subclass_code().value() == to_underlying(PCI::MassStorage::SubclassID::NVMeController)) {
-                m_controllers.append(NVMeController::initialize(device_identifier));
+                auto controller = NVMeController::try_initialize(device_identifier);
+                if (controller.is_error()) {
+                    dmesgln("Unable to initialize NVMe controller");
+                } else {
+                    m_controllers.append(controller.release_value());
+                }
             }
         });
     }

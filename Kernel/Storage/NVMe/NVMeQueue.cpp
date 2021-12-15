@@ -13,14 +13,16 @@
 
 namespace Kernel {
 
-NonnullRefPtr<NVMeQueue> NVMeQueue::create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
+ErrorOr<NonnullRefPtr<NVMeQueue>> NVMeQueue::try_create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
 {
-    return adopt_ref(*new NVMeQueue(qid, irq, q_depth, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, db_regs));
+    auto queue = TRY(adopt_nonnull_ref_or_enomem(new NVMeQueue(qid, irq, q_depth, move(cq_dma_region), cq_dma_page, move(sq_dma_region), sq_dma_page, db_regs)));
+    TRY(queue->create());
+    return queue;
 }
 
 NVMeQueue::NVMeQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs)
     : IRQHandler(irq)
-    , qid(qid)
+    , m_qid(qid)
     , cq_valid_phase(1)
     , sq_tail(0)
     , cq_head(0)
@@ -37,13 +39,14 @@ NVMeQueue::NVMeQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma
 {
     m_sqe_array = { reinterpret_cast<NVMeSubmission*>(m_sq_dma_region->vaddr().as_ptr()), m_qdepth };
     m_cqe_array = { reinterpret_cast<NVMeCompletion*>(m_cq_dma_region->vaddr().as_ptr()), m_qdepth };
+}
+
+ErrorOr<void> NVMeQueue::create()
+{
     // DMA region for RW operation. For now the requests don't exceed more than 4096 bytes(Storage device takes of it)
-    if (auto buffer = MM.dma_allocate_buffer(PAGE_SIZE, "Admin CQ queue", Memory::Region::Access::ReadWrite, m_rw_dma_page); buffer.is_error()) {
-        dmesgln("Failed to allocate memory for ADMIN CQ queue");
-        VERIFY_NOT_REACHED();
-    } else {
-        m_rw_dma_region = buffer.release_value();
-    }
+    auto buffer = TRY(MM.dma_allocate_buffer(PAGE_SIZE, "Admin CQ queue", Memory::Region::Access::ReadWrite, m_rw_dma_page));
+    m_rw_dma_region = move(buffer);
+    return {};
 }
 
 bool NVMeQueue::cqe_available()
@@ -62,6 +65,7 @@ void NVMeQueue::update_cqe_head()
         cq_head = temp_cq_head;
     }
 }
+
 bool NVMeQueue::handle_irq(const RegisterState&)
 {
     u32 nr_of_processed_cqes = 0;
@@ -91,6 +95,7 @@ bool NVMeQueue::handle_irq(const RegisterState&)
     }
     return nr_of_processed_cqes ? true : false;
 }
+
 void NVMeQueue::submit_sqe(struct NVMeSubmission& sub)
 {
     SpinlockLocker lock(m_sq_lock);

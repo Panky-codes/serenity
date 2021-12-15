@@ -23,7 +23,8 @@ class AsyncBlockDeviceRequest;
 class NVMeQueue : public IRQHandler
     , public RefCounted<NVMeQueue> {
 public:
-    static NonnullRefPtr<NVMeQueue> create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
+    static ErrorOr<NonnullRefPtr<NVMeQueue>> try_create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
+    ErrorOr<void> create();
     explicit NVMeQueue(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, RefPtr<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, RefPtr<Memory::PhysicalPage> sq_dma_page, Memory::Region* db_regs);
     bool is_admin_queue() { return m_admin_queue; };
     bool handle_irq(const RegisterState&) override;
@@ -40,18 +41,18 @@ private:
     void complete_current_request(u16 status);
     void update_cq_doorbell()
     {
-        u32 addr = REG_SQ0TDBL_START + ((2 * qid + 1) * (4 << CAP_DSTRD));
+        u32 addr = REG_SQ0TDBL_START + ((2 * m_qid + 1) * (4 << CAP_DSTRD));
         *reinterpret_cast<u16*>(m_db_regs->vaddr().as_ptr() + addr) = cq_head;
     }
 
     void update_sq_doorbell()
     {
-        u32 addr = REG_SQ0TDBL_START + ((2 * qid) * (4 << CAP_DSTRD));
+        u32 addr = REG_SQ0TDBL_START + ((2 * m_qid) * (4 << CAP_DSTRD));
         *reinterpret_cast<u16*>(m_db_regs->vaddr().as_ptr() + addr) = sq_tail;
     }
 
 private:
-    u16 qid;
+    u16 m_qid;
     u8 cq_valid_phase;
     u16 sq_tail;
     u16 prev_sq_tail {};

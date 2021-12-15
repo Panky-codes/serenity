@@ -23,9 +23,9 @@ namespace Kernel {
 
 class NVMeController : public PCI::Device
     , public StorageController {
-    AK_MAKE_ETERNAL
 public:
-    static NonnullRefPtr<NVMeController> initialize(PCI::DeviceIdentifier const&);
+    static ErrorOr<NonnullRefPtr<NVMeController>> try_initialize(PCI::DeviceIdentifier const&);
+    ErrorOr<void> initialize();
     explicit NVMeController(PCI::DeviceIdentifier const&);
     RefPtr<StorageDevice> device(u32 index) const override;
     size_t devices_count() const override;
@@ -67,10 +67,10 @@ public:
     void set_admin_queue_ready_flag() { m_admin_queue_ready = true; };
 
 private:
-    void identify_and_init_namespaces();
+    ErrorOr<void> identify_and_init_namespaces();
     Tuple<u64, u8> get_ns_features(ByteBuffer& identify_data_struct);
-    void create_admin_queue(u8 irq);
-    void create_io_queue(u8 irq, u8 qid);
+    ErrorOr<void> create_admin_queue(u8 irq);
+    ErrorOr<void> create_io_queue(u8 irq, u8 qid);
 
 private:
     PCI::DeviceIdentifier m_pci_device_id;
@@ -78,7 +78,7 @@ private:
     NonnullRefPtrVector<NVMeQueue> m_queues;
     NonnullRefPtrVector<NVMeNameSpace> m_namespaces;
     Memory::Region* m_controller_regs;
-    bool m_admin_queue_ready;
-    size_t m_device_count;
+    bool m_admin_queue_ready { false };
+    size_t m_device_count {};
 };
 }
