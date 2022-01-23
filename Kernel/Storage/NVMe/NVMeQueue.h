@@ -26,46 +26,57 @@ struct DoorbellRegister {
     u32 cq_head;
 };
 
+enum class NVMeQueueType {
+    Interrupt,
+    Poll
+};
+
 class AsyncBlockDeviceRequest;
 class NVMeQueue : public IRQHandler
     , public RefCounted<NVMeQueue> {
 public:
-    static ErrorOr<NonnullRefPtr<NVMeQueue>> try_create(u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, NonnullRefPtrVector<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, NonnullRefPtrVector<Memory::PhysicalPage> sq_dma_page, Memory::TypedMapping<volatile DoorbellRegister> db_regs);
+    static ErrorOr<NonnullRefPtr<NVMeQueue>> try_create(u16 qid, u8 irq, NVMeQueueType queue_type, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, NonnullRefPtrVector<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, NonnullRefPtrVector<Memory::PhysicalPage> sq_dma_page, Memory::TypedMapping<volatile DoorbellRegister> db_regs);
     bool is_admin_queue() { return m_admin_queue; };
-    void submit_sqe(NVMeSubmission&);
     u16 submit_sync_sqe(NVMeSubmission&);
     void read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
     void write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count);
     void enable_interrupts() { enable_irq(); };
     void disable_interrupts() { disable_irq(); };
+    virtual void submit_sqe(NVMeSubmission&);
+    virtual ~NVMeQueue() override;
 
-private:
+protected:
+    u32 process_cq();
+    void update_sq_doorbell()
+    {
+        m_db_regs->sq_tail = m_sq_tail;
+    }
     NVMeQueue(NonnullOwnPtr<Memory::Region> rw_dma_region, Memory::PhysicalPage const& rw_dma_page, u16 qid, u8 irq, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, NonnullRefPtrVector<Memory::PhysicalPage> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, NonnullRefPtrVector<Memory::PhysicalPage> sq_dma_page, Memory::TypedMapping<volatile DoorbellRegister> db_regs);
 
+private:
     virtual bool handle_irq(const RegisterState&) override;
 
     bool cqe_available();
     void update_cqe_head();
-    void complete_current_request(u16 status);
+    virtual void complete_current_request(u16 status);
     void update_cq_doorbell()
     {
         m_db_regs->cq_head = m_cq_head;
     }
 
-    void update_sq_doorbell()
-    {
-        m_db_regs->sq_tail = m_sq_tail;
-    }
+protected:
+    Spinlock m_cq_lock { LockRank::Interrupts };
+    RefPtr<AsyncBlockDeviceRequest> m_current_request;
+    NonnullOwnPtr<Memory::Region> m_rw_dma_region;
 
+private:
     u16 m_qid {};
     u8 m_cq_valid_phase { 1 };
     u16 m_sq_tail {};
     u16 m_prev_sq_tail {};
     u16 m_cq_head {};
     bool m_admin_queue { false };
-    u8 m_irq {};
     u32 m_qdepth {};
-    Spinlock m_cq_lock { LockRank::Interrupts };
     Spinlock m_sq_lock { LockRank::Interrupts };
     OwnPtr<Memory::Region> m_cq_dma_region;
     NonnullRefPtrVector<Memory::PhysicalPage> m_cq_dma_page;
@@ -73,10 +84,8 @@ private:
     OwnPtr<Memory::Region> m_sq_dma_region;
     NonnullRefPtrVector<Memory::PhysicalPage> m_sq_dma_page;
     Span<NVMeCompletion> m_cqe_array;
-    NonnullOwnPtr<Memory::Region> m_rw_dma_region;
     Memory::TypedMapping<volatile DoorbellRegister> m_db_regs;
     NonnullRefPtr<Memory::PhysicalPage> m_rw_dma_page;
     Spinlock m_request_lock;
-    RefPtr<AsyncBlockDeviceRequest> m_current_request;
 };
 }
