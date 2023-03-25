@@ -26,8 +26,7 @@ ErrorOr<NonnullLockRefPtr<NVMeQueue>> NVMeQueue::try_create(u16 qid, Optional<u8
 }
 
 UNMAP_AFTER_INIT NVMeQueue::NVMeQueue(NonnullOwnPtr<Memory::Region> rw_dma_region, Memory::PhysicalPage const& rw_dma_page, u16 qid, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, Vector<NonnullRefPtr<Memory::PhysicalPage>> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, Vector<NonnullRefPtr<Memory::PhysicalPage>> sq_dma_page, Memory::TypedMapping<DoorbellRegister volatile> db_regs)
-    : m_current_request(nullptr)
-    , m_rw_dma_region(move(rw_dma_region))
+    : m_rw_dma_region(move(rw_dma_region))
     , m_qid(qid)
     , m_admin_queue(qid == 0)
     , m_qdepth(q_depth)
@@ -39,6 +38,9 @@ UNMAP_AFTER_INIT NVMeQueue::NVMeQueue(NonnullOwnPtr<Memory::Region> rw_dma_regio
     , m_rw_dma_page(rw_dma_page)
 
 {
+    m_current_request.ensure_capacity(q_depth);
+    m_current_request.append(nullptr);
+    VERIFY(m_current_request.size() == 1);
     m_sqe_array = { reinterpret_cast<NVMeSubmission*>(m_sq_dma_region->vaddr().as_ptr()), m_qdepth };
     m_cqe_array = { reinterpret_cast<NVMeCompletion*>(m_cq_dma_region->vaddr().as_ptr()), m_qdepth };
 }
@@ -77,7 +79,7 @@ u32 NVMeQueue::process_cq()
             // everything is operated on a single request similar to BMIDE driver.
             // TODO: Remove this constraint eventually.
             VERIFY(cmdid == m_prev_sq_tail);
-            if (m_current_request) {
+            if (m_current_request[0]) {
                 complete_current_request(status);
             }
         }
@@ -137,7 +139,7 @@ void NVMeQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 
 {
     NVMeSubmission sub {};
     SpinlockLocker m_lock(m_request_lock);
-    m_current_request = request;
+    MUST(m_current_request.try_insert(0, request));
 
     sub.op = OP_NVME_READ;
     sub.rw.nsid = nsid;
@@ -154,9 +156,9 @@ void NVMeQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32
 {
     NVMeSubmission sub {};
     SpinlockLocker m_lock(m_request_lock);
-    m_current_request = request;
+    MUST(m_current_request.try_insert(0, request));
 
-    if (auto result = m_current_request->read_from_buffer(m_current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), m_current_request->buffer_size()); result.is_error()) {
+    if (auto result = m_current_request[0]->read_from_buffer(m_current_request[0]->buffer(), m_rw_dma_region->vaddr().as_ptr(), m_current_request[0]->buffer_size()); result.is_error()) {
         complete_current_request(AsyncDeviceRequest::MemoryFault);
         return;
     }

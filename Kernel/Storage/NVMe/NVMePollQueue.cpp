@@ -26,7 +26,7 @@ void NVMePollQueue::submit_sqe(NVMeSubmission& sub)
 
 void NVMePollQueue::complete_current_request(u16 status)
 {
-    auto current_request = m_current_request;
+    auto current_request = m_current_request[0];
     m_current_request.clear();
     if (status) {
         current_request->complete(AsyncBlockDeviceRequest::Failure);
