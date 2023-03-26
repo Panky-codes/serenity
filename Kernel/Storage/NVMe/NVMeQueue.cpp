@@ -94,7 +94,6 @@ void NVMeQueue::submit_sqe(NVMeSubmission& sub)
     SpinlockLocker lock(m_sq_lock);
     // For now let's use sq tail as a unique command id.
     sub.cmdid = m_sq_tail;
-    m_prev_sq_tail = m_sq_tail;
 
     memcpy(&m_sqe_array[m_sq_tail], &sub, sizeof(NVMeSubmission));
     {
