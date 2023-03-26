@@ -26,8 +26,7 @@ ErrorOr<NonnullLockRefPtr<NVMeQueue>> NVMeQueue::try_create(u16 qid, Optional<u8
 }
 
 UNMAP_AFTER_INIT NVMeQueue::NVMeQueue(NonnullOwnPtr<Memory::Region> rw_dma_region, Memory::PhysicalPage const& rw_dma_page, u16 qid, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, Vector<NonnullRefPtr<Memory::PhysicalPage>> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, Vector<NonnullRefPtr<Memory::PhysicalPage>> sq_dma_page, Memory::TypedMapping<DoorbellRegister volatile> db_regs)
-    : m_current_request(nullptr)
-    , m_rw_dma_region(move(rw_dma_region))
+    : m_rw_dma_region(move(rw_dma_region))
     , m_qid(qid)
     , m_admin_queue(qid == 0)
     , m_qdepth(q_depth)
@@ -39,6 +38,7 @@ UNMAP_AFTER_INIT NVMeQueue::NVMeQueue(NonnullOwnPtr<Memory::Region> rw_dma_regio
     , m_rw_dma_page(rw_dma_page)
 
 {
+    MUST(m_requests.try_ensure_capacity(q_depth));
     m_sqe_array = { reinterpret_cast<NVMeSubmission*>(m_sq_dma_region->vaddr().as_ptr()), m_qdepth };
     m_cqe_array = { reinterpret_cast<NVMeCompletion*>(m_cq_dma_region->vaddr().as_ptr()), m_qdepth };
 }
@@ -70,17 +70,14 @@ u32 NVMeQueue::process_cq()
         status = CQ_STATUS_FIELD(m_cqe_array[m_cq_head].status);
         cmdid = m_cqe_array[m_cq_head].command_id;
         dbgln_if(NVME_DEBUG, "NVMe: Completion with status {:x} and command identifier {}. CQ_HEAD: {}", status, cmdid, m_cq_head);
-        // TODO: We don't use AsyncBlockDevice requests for admin queue as it is only applicable for a block device (NVMe namespace)
-        //  But admin commands precedes namespace creation. Unify requests to avoid special conditions
-        if (m_admin_queue == false) {
-            // As the block layer calls are now sync (as we wait on each requests),
-            // everything is operated on a single request similar to BMIDE driver.
-            // TODO: Remove this constraint eventually.
-            VERIFY(cmdid == m_prev_sq_tail);
-            if (m_current_request) {
-                complete_current_request(status);
-            }
+
+        // As the block layer calls are now sync (as we wait on each requests),
+        // everything is operated on a single request similar to BMIDE driver.
+        if (!m_requests.contains(cmdid)) {
+            dmesgln("Bogus cmd id: {}", cmdid);
+            VERIFY_NOT_REACHED();
         }
+        complete_current_request(cmdid, status);
         update_cqe_head();
     }
     if (nr_of_processed_cqes) {
@@ -91,7 +88,7 @@ u32 NVMeQueue::process_cq()
 
 void NVMeQueue::submit_sqe(NVMeSubmission& sub)
 {
-    SpinlockLocker lock(m_sq_lock);
+    VERIFY(m_sq_lock.is_locked());
     // For now let's use sq tail as a unique command id.
     sub.cmdid = m_sq_tail;
 
@@ -113,9 +110,23 @@ u16 NVMeQueue::submit_sync_sqe(NVMeSubmission& sub)
 {
     // For now let's use sq tail as a unique command id.
     u16 cqe_cid;
-    u16 cid = m_sq_tail;
+    u16 cid;
 
-    submit_sqe(sub);
+    {
+        SpinlockLocker sq_lock(m_sq_lock);
+
+        cid = m_sq_tail;
+        sub.cmdid = cid;
+        {
+            SpinlockLocker req_lock(m_request_lock);
+
+            if (m_requests.contains(sub.cmdid) && m_requests.get(sub.cmdid).release_value().used)
+                VERIFY_NOT_REACHED();
+            m_requests.set(sub.cmdid, { nullptr, true, nullptr });
+        }
+        submit_sqe(sub);
+    }
+
     do {
         int index;
         {
@@ -135,15 +146,21 @@ u16 NVMeQueue::submit_sync_sqe(NVMeSubmission& sub)
 void NVMeQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
 {
     NVMeSubmission sub {};
-    SpinlockLocker m_lock(m_request_lock);
-    m_current_request = request;
-
+    SpinlockLocker lock(m_sq_lock);
+    sub.cmdid = m_sq_tail;
     sub.op = OP_NVME_READ;
     sub.rw.nsid = nsid;
     sub.rw.slba = AK::convert_between_host_and_little_endian(index);
     // No. of lbas is 0 based
     sub.rw.length = AK::convert_between_host_and_little_endian((count - 1) & 0xFFFF);
     sub.rw.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(m_rw_dma_page->paddr().as_ptr()));
+
+    {
+        SpinlockLocker req_lock(m_request_lock);
+        if (m_requests.contains(sub.cmdid) && m_requests.get(sub.cmdid).release_value().used)
+            VERIFY_NOT_REACHED();
+        m_requests.set(sub.cmdid, { request, true, nullptr });
+    }
 
     full_memory_barrier();
     submit_sqe(sub);
@@ -152,19 +169,27 @@ void NVMeQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 
 void NVMeQueue::write(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
 {
     NVMeSubmission sub {};
-    SpinlockLocker m_lock(m_request_lock);
-    m_current_request = request;
 
-    if (auto result = m_current_request->read_from_buffer(m_current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), m_current_request->buffer_size()); result.is_error()) {
-        complete_current_request(AsyncDeviceRequest::MemoryFault);
-        return;
-    }
+    SpinlockLocker lock(m_sq_lock);
+    sub.cmdid = m_sq_tail;
     sub.op = OP_NVME_WRITE;
     sub.rw.nsid = nsid;
     sub.rw.slba = AK::convert_between_host_and_little_endian(index);
     // No. of lbas is 0 based
     sub.rw.length = AK::convert_between_host_and_little_endian((count - 1) & 0xFFFF);
     sub.rw.data_ptr.prp1 = reinterpret_cast<u64>(AK::convert_between_host_and_little_endian(m_rw_dma_page->paddr().as_ptr()));
+
+    {
+        SpinlockLocker req_lock(m_request_lock);
+        if (m_requests.contains(sub.cmdid) && m_requests.get(sub.cmdid).release_value().used)
+            VERIFY_NOT_REACHED();
+        m_requests.set(sub.cmdid, { request, true, nullptr });
+    }
+
+    if (auto result = request.read_from_buffer(request.buffer(), m_rw_dma_region->vaddr().as_ptr(), request.buffer_size()); result.is_error()) {
+        complete_current_request(sub.cmdid, AsyncDeviceRequest::MemoryFault);
+        return;
+    }
 
     full_memory_barrier();
     submit_sqe(sub);

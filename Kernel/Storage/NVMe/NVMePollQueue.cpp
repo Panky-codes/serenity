@@ -24,21 +24,37 @@ void NVMePollQueue::submit_sqe(NVMeSubmission& sub)
     }
 }
 
-void NVMePollQueue::complete_current_request(u16 status)
+void NVMePollQueue::complete_current_request(u16 cmdid, u16 status)
 {
-    auto current_request = m_current_request;
-    m_current_request.clear();
+    SpinlockLocker lock(m_request_lock);
+    auto& request_pdu = m_requests.get(cmdid).release_value();
+    auto current_request = request_pdu.request;
+    request_pdu.used = false;
+    AsyncDeviceRequest::RequestResult req_result = AsyncDeviceRequest::Success;
+
+    // There can be submission without any request associated with it such as with
+    // admin queue commands during init. If there is no request, we are done
+    if (!current_request)
+        goto endio_handler;
+
     if (status) {
-        current_request->complete(AsyncBlockDeviceRequest::Failure);
-        return;
+        req_result = AsyncBlockDeviceRequest::Failure;
+        goto complete_request;
     }
+
     if (current_request->request_type() == AsyncBlockDeviceRequest::RequestType::Read) {
         if (auto result = current_request->write_to_buffer(current_request->buffer(), m_rw_dma_region->vaddr().as_ptr(), current_request->buffer_size()); result.is_error()) {
-            current_request->complete(AsyncDeviceRequest::MemoryFault);
-            return;
+            req_result = AsyncBlockDeviceRequest::MemoryFault;
+            goto complete_request;
         }
     }
-    current_request->complete(AsyncDeviceRequest::Success);
+
+complete_request:
+    lock.unlock();
+    current_request->complete(req_result);
+endio_handler:
+    if (request_pdu.end_io_handler)
+        request_pdu.end_io_handler(status);
     return;
 }
 }
