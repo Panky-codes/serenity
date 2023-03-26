@@ -24,10 +24,18 @@ void NVMePollQueue::submit_sqe(NVMeSubmission& sub)
     }
 }
 
-void NVMePollQueue::complete_current_request(u16 status)
+void NVMePollQueue::complete_current_request(u16 cmdid, u16 status)
 {
-    auto current_request = m_current_request[0];
-    m_current_request.clear();
+    SpinlockLocker lock(m_request_lock);
+    auto& request_pdu = m_requests.get(cmdid).release_value();
+    auto current_request = request_pdu.request;
+    request_pdu.used = false;
+
+    // There can be submission without any request associated with it such as with
+    // admin queue commands during init. If there is no request, we are done
+    if (!current_request)
+        return;
+
     if (status) {
         current_request->complete(AsyncBlockDeviceRequest::Failure);
         return;
