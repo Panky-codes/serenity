@@ -108,39 +108,27 @@ void NVMeQueue::submit_sqe(NVMeSubmission& sub)
 
 u16 NVMeQueue::submit_sync_sqe(NVMeSubmission& sub)
 {
-    // For now let's use sq tail as a unique command id.
-    u16 cqe_cid;
     u16 cid;
+    u16 cmd_status;
 
     {
         SpinlockLocker sq_lock(m_sq_lock);
 
         cid = m_sq_tail;
         sub.cmdid = cid;
+
         {
             SpinlockLocker req_lock(m_request_lock);
 
             if (m_requests.contains(sub.cmdid) && m_requests.get(sub.cmdid).release_value().used)
                 VERIFY_NOT_REACHED();
-            m_requests.set(sub.cmdid, { nullptr, true, nullptr });
+            m_requests.set(sub.cmdid, { nullptr, true, [this, &cmd_status](u16 status) mutable { cmd_status = status; m_sync_wait_queue.wake_all(); } });
         }
         submit_sqe(sub);
     }
 
-    do {
-        int index;
-        {
-            SpinlockLocker lock(m_cq_lock);
-            index = m_cq_head - 1;
-            if (index < 0)
-                index = m_qdepth - 1;
-        }
-        cqe_cid = m_cqe_array[index].command_id;
-        microseconds_delay(1);
-    } while (cid != cqe_cid);
-
-    auto status = CQ_STATUS_FIELD(m_cqe_array[m_cq_head].status);
-    return status;
+    m_sync_wait_queue.wait_forever("NVMe sync submit"sv);
+    return cmd_status;
 }
 
 void NVMeQueue::read(AsyncBlockDeviceRequest& request, u16 nsid, u64 index, u32 count)
