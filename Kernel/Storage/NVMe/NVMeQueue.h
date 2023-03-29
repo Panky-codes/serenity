@@ -44,6 +44,16 @@ protected:
     }
     NVMeQueue(NonnullOwnPtr<Memory::Region> rw_dma_region, Memory::PhysicalPage const& rw_dma_page, u16 qid, u32 q_depth, OwnPtr<Memory::Region> cq_dma_region, Vector<NonnullRefPtr<Memory::PhysicalPage>> cq_dma_page, OwnPtr<Memory::Region> sq_dma_region, Vector<NonnullRefPtr<Memory::PhysicalPage>> sq_dma_page, Memory::TypedMapping<DoorbellRegister volatile> db_regs);
 
+    u32 get_request_cid()
+    {
+        u32 cid = m_tag++;
+        if (cid == m_qdepth) {
+            cid = 0;
+            m_tag.store(cid);
+        }
+        return cid;
+    }
+
 private:
     bool cqe_available();
     void update_cqe_head();
@@ -67,6 +77,7 @@ private:
     u16 m_cq_head {};
     bool m_admin_queue { false };
     u32 m_qdepth {};
+    Atomic<u32> m_tag { 0 }; // used for the cid in a submission queue entry
     Spinlock<LockRank::Interrupts> m_sq_lock {};
     OwnPtr<Memory::Region> m_cq_dma_region;
     Vector<NonnullRefPtr<Memory::PhysicalPage>> m_cq_dma_page;
