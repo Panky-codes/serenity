@@ -73,7 +73,6 @@ private:
     u16 m_qid {};
     u8 m_cq_valid_phase { 1 };
     u16 m_sq_tail {};
-    u16 m_prev_sq_tail {};
     u16 m_cq_head {};
     bool m_admin_queue { false };
     u32 m_qdepth {};
