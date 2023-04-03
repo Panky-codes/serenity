@@ -19,13 +19,24 @@ bool Device::is_msi_capable() const
 {
     return AK::any_of(
         m_pci_identifier->capabilities(),
-        [](auto const& capability) { return capability.id().value() == PCI::Capabilities::ID::MSI; });
+        [](auto const& capability) {
+        if (capability.id().value() == PCI::Capabilities::ID::MSI) {
+            dbgln("PCI MSI message control: {}", (capability.read32(0) >> 16));
+            return true;
+        }
+        return false ; });
 }
-bool Device::is_msix_capable() const
+bool Device::is_msix_capable()
 {
-    return AK::any_of(
-        m_pci_identifier->capabilities(),
-        [](auto const& capability) { return capability.id().value() == PCI::Capabilities::ID::MSIX; });
+    for (auto& capability : m_pci_identifier->capabilities()) {
+        if (capability.id().value() == PCI::Capabilities::ID::MSIX) {
+            msix_bir_bar = (capability.read8(4) & 0x7);
+            msix_bir_offset = (capability.read32(4) & 0xfff8);
+            msix_count = (capability.read16(2) & 0x7FF) + 1;
+            return true;
+        }
+    }
+    return false;
 }
 
 void Device::enable_pin_based_interrupts() const
@@ -37,21 +48,24 @@ void Device::disable_pin_based_interrupts() const
     PCI::disable_interrupt_line(m_pci_identifier);
 }
 
-void Device::enable_message_signalled_interrupts()
+void Device::enable_msi()
 {
     TODO();
 }
-void Device::disable_message_signalled_interrupts()
+void Device::disable_msi()
 {
     TODO();
 }
-void Device::enable_extended_message_signalled_interrupts()
+void Device::enable_msix()
+{
+    for (auto& capability : m_pci_identifier->capabilities()) {
+        if (capability.id().value() == PCI::Capabilities::ID::MSIX) {
+            capability.write16(2, capability.read16(2) | (1 << 15));
+        }
+    }
+}
+void Device::disable_msix()
 {
     TODO();
 }
-void Device::disable_extended_message_signalled_interrupts()
-{
-    TODO();
-}
-
 }

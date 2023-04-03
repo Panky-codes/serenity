@@ -34,6 +34,12 @@ struct IdentifyNamespace {
     u64 rsvd3[488];
 };
 
+struct [[gnu::packed]] msix_table_entry {
+    u32 addr_low;
+    u32 addr_high;
+    u32 data;
+    u32 vector_ctlr;
+};
 // BAR
 static constexpr u32 BAR_ADDR_MASK = 0xFFFFFFF0;
 // DOORBELL

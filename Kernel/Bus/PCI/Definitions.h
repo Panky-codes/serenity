@@ -236,6 +236,7 @@ public:
 
     u8 read8(size_t offset) const;
     u16 read16(size_t offset) const;
+    void write16(size_t offset, u16 value) const;
     u32 read32(size_t offset) const;
 
 private:

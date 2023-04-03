@@ -9,6 +9,7 @@
 #include <AK/Format.h>
 #include <AK/NonnullRefPtr.h>
 #include <AK/StringBuilder.h>
+#include <AK/Tuple.h>
 #include <AK/Types.h>
 #include <Kernel/Bus/PCI/Definitions.h>
 
@@ -26,19 +27,28 @@ public:
     void disable_pin_based_interrupts() const;
 
     bool is_msi_capable() const;
-    bool is_msix_capable() const;
+    bool is_msix_capable();
 
-    void enable_message_signalled_interrupts();
-    void disable_message_signalled_interrupts();
+    void enable_msi();
+    void disable_msi();
 
-    void enable_extended_message_signalled_interrupts();
-    void disable_extended_message_signalled_interrupts();
+    void enable_msix();
+    void disable_msix();
+    u16 count_msix_interrupts() { return msix_count; }
+    void get_msix_bir_and_offset(u32* off, u8* bar)
+    {
+        *off = msix_bir_offset;
+        *bar = msix_bir_bar;
+    };
 
 protected:
     explicit Device(DeviceIdentifier const& pci_identifier);
 
 private:
-    NonnullRefPtr<DeviceIdentifier const> const m_pci_identifier;
+    NonnullRefPtr<DeviceIdentifier const> m_pci_identifier;
+    u32 msix_bir_offset = 0;
+    u8 msix_bir_bar = 0;
+    u32 msix_count = 0;
 };
 
 template<typename... Parameters>

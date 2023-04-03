@@ -278,6 +278,13 @@ u16 Capability::read16(size_t offset) const
     return read16_offsetted(identifier, m_ptr + offset);
 }
 
+void Capability::write16(size_t offset, u16 value) const
+{
+    auto& identifier = get_device_identifier(m_address);
+    SpinlockLocker locker(identifier.operation_lock());
+    write16_offsetted(identifier, m_ptr + offset, value);
+}
+
 u32 Capability::read32(size_t offset) const
 {
     auto& identifier = get_device_identifier(m_address);

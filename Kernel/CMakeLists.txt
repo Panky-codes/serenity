@@ -220,6 +220,7 @@ set(KERNEL_SOURCES
     FutexQueue.cpp
     Interrupts/GenericInterruptHandler.cpp
     Interrupts/IRQHandler.cpp
+    Interrupts/MSI.cpp
     Interrupts/SharedIRQHandler.cpp
     Interrupts/UnhandledInterruptHandler.cpp
     KBufferBuilder.cpp

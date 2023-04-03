@@ -16,6 +16,8 @@
 #include <Kernel/Sections.h>
 #include <Kernel/Storage/NVMe/NVMeController.h>
 #include <Kernel/Storage/StorageManagement.h>
+#include <Kernel/Arch/Interrupts.h>
+
 
 namespace Kernel {
 
@@ -44,6 +46,37 @@ UNMAP_AFTER_INIT ErrorOr<void> NVMeController::initialize(bool is_queue_polled)
     static_assert(sizeof(ControllerRegister) == REG_SQ0TDBL_START);
     static_assert(sizeof(NVMeSubmission) == (1 << SQ_WIDTH));
 
+    VERIFY(is_msix_capable());
+
+    u32 msix_bir_offset;
+    u8 msix_bir_bar;
+    get_msix_bir_and_offset(&msix_bir_offset, &msix_bir_bar);
+
+    VERIFY(msix_bir_bar == 0);
+
+    auto table_ptr = TRY(Memory::map_typed_writable<msix_table_entry volatile>(PhysicalAddress(m_bar + msix_bir_offset)));
+
+    table_ptr->data = 102 + IRQ_VECTOR_BASE; // Choosing 102 as the IRQ
+    u64 addr = 0xfee00000 | (0 << 12);
+    table_ptr->addr_low = addr & 0xffffffff;
+    table_ptr->addr_high = addr >> 32;
+    u32 vector_ctrl = table_ptr->vector_ctlr;
+    vector_ctrl &= ~(0x0001);
+    table_ptr->vector_ctlr = vector_ctrl;
+
+    auto table_ptr_1 = TRY(Memory::map_typed_writable<msix_table_entry volatile>(PhysicalAddress(m_bar + msix_bir_offset + 16)));
+
+    table_ptr_1->data = 101 + IRQ_VECTOR_BASE; // Choosing 101 as the IRQ
+    u64 addr_1 = 0xfee00000 | (0 << 12);
+    table_ptr_1->addr_low = addr_1 & 0xffffffff;
+    table_ptr_1->addr_high = addr_1 >> 32;
+    u32 vector_ctrl_1 = table_ptr_1->vector_ctlr;
+    vector_ctrl_1 &= ~(0x0001);
+    table_ptr_1->vector_ctlr = vector_ctrl_1;
+
+    PCI::disable_interrupt_line(device_identifier());
+    enable_msix();
+
     // Map only until doorbell register for the controller
     // Queues will individually map the doorbell register respectively
     m_controller_regs = TRY(Memory::map_typed_writable<ControllerRegister volatile>(PhysicalAddress(m_bar)));
@@ -52,7 +85,7 @@ UNMAP_AFTER_INIT ErrorOr<void> NVMeController::initialize(bool is_queue_polled)
     m_ready_timeout = Time::from_milliseconds((CAP_TO(caps) + 1) * 500); // CAP.TO is in 500ms units
 
     calculate_doorbell_stride();
-    TRY(create_admin_queue(irq));
+    TRY(create_admin_queue(102));
     VERIFY(m_admin_queue_ready == true);
 
     VERIFY(IO_QUEUE_SIZE < MQES(caps));
@@ -61,7 +94,7 @@ UNMAP_AFTER_INIT ErrorOr<void> NVMeController::initialize(bool is_queue_polled)
     // Create an IO queue per core
     for (u32 cpuid = 0; cpuid < nr_of_queues; ++cpuid) {
         // qid is zero is used for admin queue
-        TRY(create_io_queue(cpuid + 1, irq));
+        TRY(create_io_queue(cpuid + 1, 101));
     }
     TRY(identify_and_init_namespaces());
     return {};
@@ -329,6 +362,7 @@ UNMAP_AFTER_INIT ErrorOr<void> NVMeController::create_io_queue(u8 qid, Optional<
         // For now using pin based interrupts. Clear the first 16 bits
         // to use pin-based interrupts.
         sub.create_cq.cq_flags = AK::convert_between_host_and_little_endian(flags & 0xFFFF);
+        sub.create_cq.irq_vector = qid;
         submit_admin_command(sub, true);
     }
     {
@@ -348,7 +382,7 @@ UNMAP_AFTER_INIT ErrorOr<void> NVMeController::create_io_queue(u8 qid, Optional<
     auto doorbell_regs = TRY(Memory::map_typed_writable<DoorbellRegister volatile>(PhysicalAddress(m_bar + queue_doorbell_offset)));
 
     m_queues.append(TRY(NVMeQueue::try_create(qid, irq, IO_QUEUE_SIZE, move(cq_dma_region), cq_dma_pages, move(sq_dma_region), sq_dma_pages, move(doorbell_regs))));
-    dbgln_if(NVME_DEBUG, "NVMe: Created IO Queue with QID{}", m_queues.size());
+    dbgln_if(NVME_DEBUG, "NVMe: Created IO Queue with QID{}", qid);
     return {};
 }
 }

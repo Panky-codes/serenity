@@ -348,6 +348,9 @@ void register_disabled_interrupt_handler(u8 number, GenericInterruptHandler& han
 void register_generic_interrupt_handler(u8 interrupt_number, GenericInterruptHandler& handler)
 {
     VERIFY(interrupt_number < GENERIC_INTERRUPT_HANDLERS_COUNT);
+
+    if (interrupt_number == 102)
+        dbgln("!!!!!!!!!!!!!!!!!!!!!!!!!Setting up irq for 102");
     auto*& handler_slot = s_interrupt_handler[interrupt_number];
     if (handler_slot == nullptr) {
         handler_slot = &handler;
