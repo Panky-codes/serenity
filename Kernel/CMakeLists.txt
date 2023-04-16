@@ -220,6 +220,7 @@ set(KERNEL_SOURCES
     FutexQueue.cpp
     Interrupts/GenericInterruptHandler.cpp
     Interrupts/IRQHandler.cpp
+    Interrupts/PCIIRQHandler.cpp
     Interrupts/SharedIRQHandler.cpp
     Interrupts/UnhandledInterruptHandler.cpp
     KBufferBuilder.cpp
@@ -393,6 +394,7 @@ if ("${SERENITY_ARCH}" STREQUAL "x86_64")
         Arch/x86_64/PCI/Controller/HostBridge.cpp
         Arch/x86_64/PCI/IDELegacyModeController.cpp
         Arch/x86_64/PCI/Initializer.cpp
+	Arch/x86_64/PCI/MSI.cpp
 
         Arch/x86_64/VGA/IOArbiter.cpp
 
@@ -414,7 +416,7 @@ if ("${SERENITY_ARCH}" STREQUAL "x86_64")
 
     set(KERNEL_SOURCES
         ${KERNEL_SOURCES}
-        
+
         ${CMAKE_CURRENT_SOURCE_DIR}/Arch/x86_64/ASM_wrapper.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Arch/x86_64/CPU.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Arch/x86_64/CPUID.cpp

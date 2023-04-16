@@ -190,8 +190,6 @@ public:
     {
     }
 
-    Address(Address const& address) = default;
-
     bool is_null() const { return !m_bus && !m_device && !m_function; }
     operator bool() const { return !is_null(); }
 
@@ -233,16 +231,19 @@ public:
     {
     }
 
+    Capability() = default;
+
     CapabilityID id() const { return m_id; }
 
     u8 read8(size_t offset) const;
     u16 read16(size_t offset) const;
     u32 read32(size_t offset) const;
+    void write16(size_t offset, u16 value) const;
 
 private:
-    const Address m_address;
-    const CapabilityID m_id;
-    const u8 m_ptr;
+    Address m_address;
+    CapabilityID m_id;
+    u8 m_ptr;
 };
 
 AK_TYPEDEF_DISTINCT_ORDERED_ID(u8, ClassCode);
@@ -316,6 +317,25 @@ protected:
     Vector<Capability> m_capabilities;
 };
 
+class MSIxInfo {
+public:
+    explicit MSIxInfo(Capability const& cap, u16 table_size, u8 table_bar, u32 table_offset)
+        : table_size(table_size)
+        , table_bar(table_bar)
+        , table_offset(table_offset)
+        , cap(cap)
+
+    {
+    }
+
+    MSIxInfo() = default;
+
+    u16 table_size {};
+    u8 table_bar {};
+    u32 table_offset {};
+    Capability cap {};
+};
+
 class DeviceIdentifier
     : public RefCounted<DeviceIdentifier>
     , public EnumerableDeviceIdentifier {
@@ -323,6 +343,11 @@ class DeviceIdentifier
 
 public:
     static ErrorOr<NonnullRefPtr<DeviceIdentifier>> from_enumerable_identifier(EnumerableDeviceIdentifier const& other_identifier);
+
+    void initialize() const;
+    bool is_msix_capable() const { return m_msix_info.table_size > 0; }
+    u8 get_msix_table_bar() const { return m_msix_info.table_bar; }
+    u32 get_msix_table_offset() const { return m_msix_info.table_offset; }
 
     Spinlock<LockRank::None>& operation_lock() { return m_operation_lock; }
     Spinlock<LockRank::None>& operation_lock() const { return m_operation_lock; }
@@ -346,6 +371,7 @@ private:
     }
 
     mutable Spinlock<LockRank::None> m_operation_lock;
+    mutable MSIxInfo m_msix_info {};
 };
 
 class Domain;

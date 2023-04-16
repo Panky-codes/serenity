@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+#include <Kernel/Arch/Interrupts.h>
 #include <Kernel/Arch/x86_64/IO.h>
 #include <Kernel/Bus/PCI/API.h>
 #include <Kernel/Bus/PCI/Access.h>
@@ -71,6 +72,9 @@ UNMAP_AFTER_INIT void initialize()
     PCIBusSysFSDirectory::initialize();
 
     MUST(PCI::enumerate([&](DeviceIdentifier const& device_identifier) {
+        // FIXME BEFORE PR: Put this in a good wrapper
+        auto& handler = get_interrupt_handler(device_identifier.interrupt_line().value());
+        handler.set_reserved();
         dmesgln("{} {}", device_identifier.address(), device_identifier.hardware_id());
     }));
 }

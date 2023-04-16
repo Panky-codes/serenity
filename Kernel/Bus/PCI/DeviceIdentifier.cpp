@@ -17,4 +17,16 @@ ErrorOr<NonnullRefPtr<DeviceIdentifier>> DeviceIdentifier::from_enumerable_ident
     return adopt_nonnull_ref_or_enomem(new (nothrow) DeviceIdentifier(other_identifier));
 }
 
+void DeviceIdentifier::initialize() const
+{
+    for (auto cap : capabilities()) {
+        if (cap.id() == PCI::Capabilities::ID::MSIX) {
+            auto msix_bir_bar = (cap.read8(4) & 0x7);
+            auto msix_bir_offset = (cap.read32(4) & 0xfff8);
+            auto msix_count = (cap.read16(2) & 0x7FF) + 1;
+            m_msix_info = MSIxInfo(cap, msix_count, msix_bir_bar, msix_bir_offset);
+        }
+    }
+}
+
 }
