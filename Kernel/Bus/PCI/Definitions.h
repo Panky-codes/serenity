@@ -237,6 +237,7 @@ public:
     u8 read8(size_t offset) const;
     u16 read16(size_t offset) const;
     u32 read32(size_t offset) const;
+    void write16(size_t offset, u16 value) const;
 
 private:
     Address m_address;
@@ -317,17 +318,17 @@ protected:
 
 class MSIxInfo {
 public:
-        explicit MSIxInfo(Capability const& cap, u16 table_size, u8 table_bar, u32 table_offset)
-            : m_table_size(table_size)
-            , m_table_bar(table_bar)
-            , m_table_offset(table_offset)
-            , m_cap(cap)
+    explicit MSIxInfo(Capability const& cap, u16 table_size, u8 table_bar, u32 table_offset)
+        : m_table_size(table_size)
+        , m_table_bar(table_bar)
+        , m_table_offset(table_offset)
+        , m_cap(cap)
 
-        {
-        }
+    {
+    }
 
     MSIxInfo() = default;
-private:
+
     u16 m_table_size {};
     u8 m_table_bar {};
     u32 m_table_offset {};
@@ -343,6 +344,9 @@ public:
     static ErrorOr<NonnullRefPtr<DeviceIdentifier>> from_enumerable_identifier(EnumerableDeviceIdentifier const& other_identifier);
 
     void initialize() const;
+    bool is_msix_capable() const { return m_msix_info.m_table_size > 0; }
+    u8 get_msix_table_bar() const { return m_msix_info.m_table_bar; }
+    u32 get_msix_table_offset() const { return m_msix_info.m_table_offset; }
 
     Spinlock<LockRank::None>& operation_lock() { return m_operation_lock; }
     Spinlock<LockRank::None>& operation_lock() const { return m_operation_lock; }

@@ -14,6 +14,7 @@
 #include <Kernel/Interrupts/SharedIRQHandler.h>
 #include <Kernel/Interrupts/SpuriousInterruptHandler.h>
 #include <Kernel/Interrupts/UnhandledInterruptHandler.h>
+#include <Kernel/Locking/Mutex.h>
 #include <Kernel/Panic.h>
 #include <Kernel/PerformanceManager.h>
 #include <Kernel/Process.h>
@@ -43,6 +44,8 @@ namespace Kernel {
 READONLY_AFTER_INIT static DescriptorTablePointer s_idtr;
 READONLY_AFTER_INIT static IDTEntry s_idt[256];
 
+// This mutex is used to reserve IRQs that can be later used by interrupt mechanism such as MSIx
+static Spinlock<LockRank::None> s_interrupt_handler_lock {};
 static GenericInterruptHandler* s_interrupt_handler[GENERIC_INTERRUPT_HANDLERS_COUNT];
 static GenericInterruptHandler* s_disabled_interrupt_handler[2];
 
@@ -331,6 +334,52 @@ static void revert_to_unused_handler(u8 interrupt_number)
 {
     auto handler = new UnhandledInterruptHandler(interrupt_number);
     handler->register_interrupt_handler();
+}
+
+static bool is_unused_handler(GenericInterruptHandler* handler_slot)
+{
+    return (handler_slot->type() == HandlerType::UnhandledInterruptHandler) && !handler_slot->is_reserved();
+}
+
+// Reserves `number`
+ErrorOr<u8> reserve_interrupt_handler(u8 number)
+{
+    bool found_range = false;
+    u8 first_irq = 0;
+    //    MutexLocker locker(s_interrupt_handler_lock);
+    SpinlockLocker locker(s_interrupt_handler_lock);
+    for (int start_irq = 0; start_irq < GENERIC_INTERRUPT_HANDLERS_COUNT; start_irq++) {
+        auto*& handler_slot = s_interrupt_handler[start_irq];
+        VERIFY(handler_slot != nullptr);
+
+        if (is_unused_handler(handler_slot)) {
+            found_range = true;
+            for (auto off = 1; off < number; off++) {
+                auto*& handler = s_interrupt_handler[start_irq + off];
+                VERIFY(handler_slot != nullptr);
+
+                if (!is_unused_handler(handler)) {
+                    found_range = false;
+                    break;
+                }
+            }
+        }
+
+        if (found_range == true) {
+            first_irq = start_irq;
+            break;
+        }
+    }
+
+    if (!found_range)
+        return Error::from_errno(EAGAIN);
+
+    for (auto irq = first_irq; irq < number; irq++) {
+        auto*& handler_slot = s_interrupt_handler[irq];
+        handler_slot->set_reserved();
+    }
+
+    return first_irq;
 }
 
 void register_disabled_interrupt_handler(u8 number, GenericInterruptHandler& handler)
