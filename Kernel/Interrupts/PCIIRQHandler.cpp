@@ -24,6 +24,20 @@ PCIIRQHandler::PCIIRQHandler(PCI::Device& device, u8 irq)
         disable_irq();
 }
 
+PCIIRQHandler::PCIIRQHandler(PCI::Device& device, u8 irq, CallbackType callback)
+    : GenericInterruptHandler(irq)
+    , device(device)
+    , m_callback(move(callback))
+{
+    auto type = device.get_interrupt_type();
+
+    if (type == PCI::InterruptType::PIN)
+        m_responsible_irq_controller = InterruptManagement::the().get_responsible_irq_controller(irq);
+
+    if (is_registered())
+        disable_irq();
+}
+
 bool PCIIRQHandler::eoi()
 {
     dbgln_if(IRQ_DEBUG, "EOI IRQ {}", interrupt_number());
