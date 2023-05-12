@@ -17,8 +17,7 @@
 namespace Kernel {
 
 class E1000NetworkAdapter : public NetworkAdapter
-    , public PCI::Device
-    , public IRQHandler {
+    , public PCI::Device {
 public:
     static ErrorOr<bool> probe(PCI::DeviceIdentifier const&);
     static ErrorOr<NonnullRefPtr<NetworkAdapter>> create(PCI::DeviceIdentifier const&);
@@ -31,7 +30,6 @@ public:
     virtual i32 link_speed() override;
     virtual bool link_full_duplex() override;
 
-    virtual StringView purpose() const override { return class_name(); }
     virtual StringView device_name() const override { return "E1000"sv; }
     virtual Type adapter_type() const override { return Type::Ethernet; }
 
@@ -47,7 +45,7 @@ protected:
         NonnullOwnPtr<Memory::Region> tx_buffer_region, NonnullOwnPtr<Memory::Region> rx_descriptors_region,
         NonnullOwnPtr<Memory::Region> tx_descriptors_region, NonnullOwnPtr<KString>);
 
-    virtual bool handle_irq(RegisterState const&) override;
+    virtual bool handle_irq(RegisterState const&);
     virtual StringView class_name() const override { return "E1000NetworkAdapter"sv; }
 
     struct [[gnu::packed]] e1000_rx_desc {
@@ -99,6 +97,7 @@ protected:
     bool m_has_eeprom { false };
     bool m_link_up { false };
     EntropySource m_entropy_source;
+    RefPtr<IRQHandler> m_interrupt_handler;
 
     WaitQueue m_wait_queue;
 };

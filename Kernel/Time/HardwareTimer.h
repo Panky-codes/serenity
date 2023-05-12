@@ -60,15 +60,14 @@ public:
 
 template<>
 class HardwareTimer<IRQHandler>
-    : public HardwareTimerBase
-    , public IRQHandler {
+    : public HardwareTimerBase {
 public:
     virtual void will_be_destroyed() override
     {
-        IRQHandler::will_be_destroyed();
+        m_interrupt_handler->will_be_destroyed();
     }
 
-    virtual StringView purpose() const override
+    virtual StringView purpose() const
     {
         if (TimeManagement::the().is_system_timer(*this))
             return "System Timer"sv;
@@ -77,10 +76,10 @@ public:
 
     virtual Function<void(RegisterState const&)> set_callback(Function<void(RegisterState const&)> callback) override
     {
-        disable_irq();
+        m_interrupt_handler->disable_irq();
         auto previous_callback = move(m_callback);
         m_callback = move(callback);
-        enable_irq();
+        m_interrupt_handler->enable_irq();
         return previous_callback;
     }
 
@@ -88,12 +87,13 @@ public:
 
 protected:
     HardwareTimer(u8 irq_number, Function<void(RegisterState const&)> callback = nullptr)
-        : IRQHandler(irq_number)
-        , m_callback(move(callback))
+        : m_callback(move(callback))
     {
+        m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+            irq_number, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, purpose()));
     }
 
-    virtual bool handle_irq(RegisterState const& regs) override
+    virtual bool handle_irq(RegisterState const& regs)
     {
         // Note: if we have an IRQ on this line, it's going to be the timer always
         if (m_callback) {
@@ -102,11 +102,20 @@ protected:
         }
         return false;
     }
+    virtual void enable_irq()
+    {
+        m_interrupt_handler->enable_irq();
+    }
+    virtual void disable_irq()
+    {
+        m_interrupt_handler->disable_irq();
+    }
 
     u64 m_frequency { OPTIMAL_TICKS_PER_SECOND_RATE };
 
 private:
     Function<void(RegisterState const&)> m_callback;
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 
 template<>

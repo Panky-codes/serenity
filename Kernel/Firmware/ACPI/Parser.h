@@ -48,14 +48,13 @@ protected:
     NonnullOwnPtr<KString> m_table_name;
 };
 
-class Parser final : public IRQHandler {
+class Parser final {
 public:
     static Parser* the();
 
     static void must_initialize(PhysicalAddress rsdp, PhysicalAddress fadt, u8 irq_number);
 
-    virtual StringView purpose() const override { return "ACPI Parser"sv; }
-    virtual bool handle_irq(RegisterState const&) override;
+    virtual bool handle_irq(RegisterState const&);
 
     Optional<PhysicalAddress> find_table(StringView signature);
 
@@ -106,6 +105,7 @@ private:
     bool m_can_process_bytecode { false };
     FADTFlags::HardwareFeatures m_hardware_flags;
     FADTFlags::x86_Specific_Flags m_x86_specific_flags;
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 
 }

@@ -398,10 +398,11 @@ UNMAP_AFTER_INIT void Parser::locate_main_system_description_table()
 }
 
 UNMAP_AFTER_INIT Parser::Parser(PhysicalAddress rsdp, PhysicalAddress fadt, u8 irq_number)
-    : IRQHandler(irq_number)
-    , m_rsdp(rsdp)
+    : m_rsdp(rsdp)
     , m_fadt(fadt)
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        irq_number, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "ACPI Parser"sv));
     dmesgln("ACPI: Using RSDP @ {}", rsdp);
     locate_static_data();
 }

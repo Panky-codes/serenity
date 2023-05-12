@@ -41,8 +41,7 @@ class PCIIDELegacyModeController;
 class ISAIDEController;
 #endif
 class IDEChannel
-    : public ATAPort
-    , public IRQHandler {
+    : public ATAPort {
     friend class IDEController;
 
 public:
@@ -93,7 +92,7 @@ public:
 
     virtual ~IDEChannel() override;
 
-    virtual StringView purpose() const override { return "PATA Channel"sv; }
+    virtual StringView purpose() const { return "PATA Channel"sv; }
 
 #if ARCH(X86_64)
     ErrorOr<void> allocate_resources_for_pci_ide_controller(Badge<PCIIDELegacyModeController>, bool force_pio);
@@ -143,7 +142,7 @@ private:
     IDEChannel(IDEController const&, IOWindowGroup, ChannelType type, NonnullOwnPtr<KBuffer> ata_identify_data_buffer);
     IDEChannel(IDEController const&, u8 irq, IOWindowGroup, ChannelType type, NonnullOwnPtr<KBuffer> ata_identify_data_buffer);
     //^ IRQHandler
-    virtual bool handle_irq(RegisterState const&) override;
+    virtual bool handle_irq(RegisterState const&);
 
     // Data members
     ChannelType m_channel_type { ChannelType::Primary };
@@ -152,5 +151,6 @@ private:
     bool m_interrupts_enabled { true };
 
     IOWindowGroup m_io_window_group;
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 }

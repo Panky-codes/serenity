@@ -163,7 +163,7 @@ UNMAP_AFTER_INIT ErrorOr<void> Device::initialize_virtio_resources()
     // assigned with an IOWindow, to ensure that in case of getting an interrupt
     // we can access registers from that IO window range.
     PCI::enable_interrupt_line(device_identifier());
-    enable_irq();
+    m_interrupt_handler->enable_irq();
 
     reset_device();
     set_status_bit(DEVICE_STATUS_ACKNOWLEDGE);
@@ -174,9 +174,10 @@ UNMAP_AFTER_INIT ErrorOr<void> Device::initialize_virtio_resources()
 
 UNMAP_AFTER_INIT VirtIO::Device::Device(PCI::DeviceIdentifier const& device_identifier)
     : PCI::Device(const_cast<PCI::DeviceIdentifier&>(device_identifier))
-    , IRQHandler(device_identifier.interrupt_line().value())
     , m_class_name(VirtIO::determine_device_class(device_identifier))
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        device_identifier.interrupt_line().value(), [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "VIRTIO"sv));
     dbgln("{}: Found @ {}", m_class_name, device_identifier.address());
 }
 

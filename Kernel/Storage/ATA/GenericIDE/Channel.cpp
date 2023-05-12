@@ -122,18 +122,20 @@ UNMAP_AFTER_INIT ErrorOr<void> IDEChannel::allocate_resources(bool force_pio)
 
 UNMAP_AFTER_INIT IDEChannel::IDEChannel(IDEController const& controller, u8 irq, IOWindowGroup io_group, ChannelType type, NonnullOwnPtr<KBuffer> ata_identify_data_buffer)
     : ATAPort(controller, (type == ChannelType::Primary ? 0 : 1), move(ata_identify_data_buffer))
-    , IRQHandler(irq)
     , m_channel_type(type)
     , m_io_window_group(move(io_group))
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        irq, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "AC97"sv));
 }
 
 UNMAP_AFTER_INIT IDEChannel::IDEChannel(IDEController const& controller, IOWindowGroup io_group, ChannelType type, NonnullOwnPtr<KBuffer> ata_identify_data_buffer)
     : ATAPort(controller, (type == ChannelType::Primary ? 0 : 1), move(ata_identify_data_buffer))
-    , IRQHandler(type == ChannelType::Primary ? PATA_PRIMARY_IRQ : PATA_SECONDARY_IRQ)
     , m_channel_type(type)
     , m_io_window_group(move(io_group))
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        type == ChannelType::Primary ? PATA_PRIMARY_IRQ : PATA_SECONDARY_IRQ, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "AC97"sv));
 }
 
 UNMAP_AFTER_INIT IDEChannel::~IDEChannel() = default;

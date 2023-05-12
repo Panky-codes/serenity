@@ -214,7 +214,7 @@ UNMAP_AFTER_INIT ErrorOr<void> E1000ENetworkAdapter::initialize(Badge<Networking
     enable_bus_mastering(device_identifier());
 
     dmesgln("E1000e: IO base: {}", m_registers_io_window);
-    dmesgln("E1000e: Interrupt line: {}", interrupt_number());
+    dmesgln("E1000e: Interrupt line: {}", m_interrupt_handler->interrupt_number());
     detect_eeprom();
     dmesgln("E1000e: Has EEPROM? {}", m_has_eeprom);
     read_mac_address();

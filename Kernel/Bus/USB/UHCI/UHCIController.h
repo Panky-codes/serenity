@@ -26,8 +26,7 @@ namespace Kernel::USB {
 
 class UHCIController final
     : public USBController
-    , public PCI::Device
-    , public IRQHandler {
+    , public PCI::Device {
 
     static constexpr u8 MAXIMUM_NUMBER_OF_TDS = 128; // Upper pool limit. This consumes the second page we have allocated
     static constexpr u8 MAXIMUM_NUMBER_OF_QHS = 64;
@@ -37,8 +36,7 @@ public:
     static ErrorOr<NonnullLockRefPtr<UHCIController>> try_to_initialize(PCI::DeviceIdentifier const& pci_device_identifier);
     virtual ~UHCIController() override;
 
-    virtual StringView purpose() const override { return "UHCI"sv; }
-    virtual StringView device_name() const override { return purpose(); }
+    virtual StringView device_name() const override { return m_interrupt_handler->purpose(); }
 
     virtual ErrorOr<void> initialize() override;
     virtual ErrorOr<void> reset() override;
@@ -80,7 +78,7 @@ private:
     void write_portsc1(u16 value) { m_registers_io_window->write16(0x10, value); }
     void write_portsc2(u16 value) { m_registers_io_window->write16(0x12, value); }
 
-    virtual bool handle_irq(RegisterState const&) override;
+    bool handle_irq(RegisterState const&);
 
     ErrorOr<void> create_structures();
     void setup_schedule();
@@ -126,5 +124,6 @@ private:
 
     // Bitfield containing whether a given port should signal a change in suspend or not.
     u8 m_port_suspend_change_statuses { 0 };
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 }

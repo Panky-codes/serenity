@@ -19,15 +19,16 @@ void AHCIInterruptHandler::allocate_resources_and_initialize_ports()
 {
     // Clear pending interrupts, if there are any!
     m_pending_ports_interrupts.set_all();
-    enable_irq();
+    m_interrupt_handler->enable_irq();
 }
 
 UNMAP_AFTER_INIT AHCIInterruptHandler::AHCIInterruptHandler(AHCIController& controller, u8 irq, AHCI::MaskedBitField taken_ports)
-    : IRQHandler(irq)
-    , m_parent_controller(controller)
+    : m_parent_controller(controller)
     , m_taken_ports(taken_ports)
     , m_pending_ports_interrupts(create_pending_ports_interrupts_bitfield())
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        irq, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "SATA IRQ Handler"sv));
     dbgln_if(AHCI_DEBUG, "AHCI Port Handler: IRQ {}", irq);
 }
 

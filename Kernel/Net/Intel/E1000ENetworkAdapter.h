@@ -26,7 +26,7 @@ public:
 
     virtual ~E1000ENetworkAdapter() override;
 
-    virtual StringView purpose() const override { return class_name(); }
+    // TODO: Pass class name as a parameter
 
 private:
     E1000ENetworkAdapter(PCI::DeviceIdentifier const&, u8 irq,

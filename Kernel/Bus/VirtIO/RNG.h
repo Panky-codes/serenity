@@ -20,7 +20,7 @@ class RNG final
     , public VirtIO::Device {
 public:
     static NonnullLockRefPtr<RNG> must_create(PCI::DeviceIdentifier const&);
-    virtual StringView purpose() const override { return class_name(); }
+    virtual StringView purpose() const{ return class_name(); }
     virtual StringView device_name() const override { return class_name(); }
     virtual ~RNG() override = default;
 

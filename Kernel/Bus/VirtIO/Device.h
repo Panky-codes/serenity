@@ -19,8 +19,7 @@ namespace Kernel::VirtIO {
 void detect();
 
 class Device
-    : public PCI::Device
-    , public IRQHandler {
+    : public PCI::Device {
 public:
     virtual ~Device() override = default;
 
@@ -123,7 +122,7 @@ private:
     void reset_device();
 
     u8 isr_status();
-    virtual bool handle_irq(RegisterState const&) override;
+    virtual bool handle_irq(RegisterState const&);
 
     Vector<NonnullOwnPtr<Queue>> m_queues;
     Vector<Configuration> m_configs;
@@ -143,6 +142,7 @@ private:
     bool m_did_accept_features { false };
     bool m_did_setup_queues { false };
     u32 m_notify_multiplier { 0 };
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 
 }

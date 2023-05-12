@@ -42,11 +42,12 @@ UNMAP_AFTER_INIT ErrorOr<bool> AC97::probe(PCI::DeviceIdentifier const& device_i
 
 UNMAP_AFTER_INIT AC97::AC97(PCI::DeviceIdentifier const& pci_device_identifier, NonnullOwnPtr<AC97Channel> pcm_out_channel, NonnullOwnPtr<IOWindow> mixer_io_window, NonnullOwnPtr<IOWindow> bus_io_window)
     : PCI::Device(const_cast<PCI::DeviceIdentifier&>(pci_device_identifier))
-    , IRQHandler(pci_device_identifier.interrupt_line().value())
     , m_mixer_io_window(move(mixer_io_window))
     , m_bus_io_window(move(bus_io_window))
     , m_pcm_out_channel(move(pcm_out_channel))
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        pci_device_identifier.interrupt_line().value(), [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "AC97"sv));
 }
 
 UNMAP_AFTER_INIT AC97::~AC97() = default;
@@ -133,7 +134,7 @@ UNMAP_AFTER_INIT ErrorOr<void> AC97::initialize(Badge<AudioManagement>)
     set_pcm_output_volume(0, 0, Muted::No);
 
     m_pcm_out_channel->reset();
-    enable_irq();
+    m_interrupt_handler->enable_irq();
     return {};
 }
 

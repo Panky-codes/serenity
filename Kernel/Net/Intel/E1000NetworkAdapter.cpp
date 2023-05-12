@@ -90,10 +90,10 @@ namespace Kernel {
 #define TCTL_SWXOFF (1 << 22) // Software XOFF Transmission
 #define TCTL_RTLC (1 << 24)   // Re-transmit on Late Collision
 
-#define TSTA_DD (1 << 0) // Descriptor Done
-#define TSTA_EC (1 << 1) // Excess Collisions
-#define TSTA_LC (1 << 2) // Late Collision
-#define LSTA_TU (1 << 3) // Transmit Underrun
+#define TSTA_DD (1 << 0)      // Descriptor Done
+#define TSTA_EC (1 << 1)      // Excess Collisions
+#define TSTA_LC (1 << 2)      // Late Collision
+#define LSTA_TU (1 << 3)      // Transmit Underrun
 
 // STATUS Register
 
@@ -193,7 +193,7 @@ UNMAP_AFTER_INIT ErrorOr<void> E1000NetworkAdapter::initialize(Badge<NetworkingM
     enable_bus_mastering(device_identifier());
 
     dmesgln_pci(*this, "IO base: {}", m_registers_io_window);
-    dmesgln_pci(*this, "Interrupt line: {}", interrupt_number());
+    dmesgln_pci(*this, "Interrupt line: {}", m_interrupt_handler->interrupt_number());
     detect_eeprom();
     dmesgln_pci(*this, "Has EEPROM? {}", m_has_eeprom);
     read_mac_address();
@@ -222,7 +222,7 @@ UNMAP_AFTER_INIT void E1000NetworkAdapter::setup_interrupts()
     out32(REG_INTERRUPT_RATE, 6000); // Interrupt rate of 1.536 milliseconds
     out32(REG_INTERRUPT_MASK_SET, INTERRUPT_LSC | INTERRUPT_RXT0 | INTERRUPT_RXO);
     in32(REG_INTERRUPT_CAUSE_READ);
-    enable_irq();
+    m_interrupt_handler->enable_irq();
 }
 
 UNMAP_AFTER_INIT E1000NetworkAdapter::E1000NetworkAdapter(PCI::DeviceIdentifier const& device_identifier, u8 irq,
@@ -231,13 +231,14 @@ UNMAP_AFTER_INIT E1000NetworkAdapter::E1000NetworkAdapter(PCI::DeviceIdentifier 
     NonnullOwnPtr<Memory::Region> tx_descriptors_region, NonnullOwnPtr<KString> interface_name)
     : NetworkAdapter(move(interface_name))
     , PCI::Device(device_identifier)
-    , IRQHandler(irq)
     , m_registers_io_window(move(registers_io_window))
     , m_rx_descriptors_region(move(rx_descriptors_region))
     , m_tx_descriptors_region(move(tx_descriptors_region))
     , m_rx_buffer_region(move(rx_buffer_region))
     , m_tx_buffer_region(move(tx_buffer_region))
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        irq, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "E1000"sv));
 }
 
 UNMAP_AFTER_INIT E1000NetworkAdapter::~E1000NetworkAdapter() = default;
@@ -402,7 +403,7 @@ u32 E1000NetworkAdapter::in32(u16 address)
 
 void E1000NetworkAdapter::send_raw(ReadonlyBytes payload)
 {
-    disable_irq();
+    m_interrupt_handler->disable_irq();
     size_t tx_current = in32(REG_TXDESCTAIL) % number_of_tx_descriptors;
     dbgln_if(E1000_DEBUG, "E1000: Sending packet ({} bytes)", payload.size());
     auto* tx_descriptors = (e1000_tx_desc*)m_tx_descriptors_region->vaddr().as_ptr();
@@ -416,7 +417,7 @@ void E1000NetworkAdapter::send_raw(ReadonlyBytes payload)
     dbgln_if(E1000_DEBUG, "E1000: Using tx descriptor {} (head is at {})", tx_current, in32(REG_TXDESCHEAD));
     tx_current = (tx_current + 1) % number_of_tx_descriptors;
     Processor::disable_interrupts();
-    enable_irq();
+    m_interrupt_handler->enable_irq();
     out32(REG_TXDESCTAIL, tx_current);
     for (;;) {
         if (descriptor.status) {

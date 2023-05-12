@@ -18,8 +18,7 @@ namespace Kernel {
 
 // RTL8618 / RTL8111 Driver based on https://people.freebsd.org/~wpaul/RealTek/RTL8111B_8168B_Registers_DataSheet_1.0.pdf
 class RTL8168NetworkAdapter final : public NetworkAdapter
-    , public PCI::Device
-    , public IRQHandler {
+    , public PCI::Device {
 public:
     static ErrorOr<bool> probe(PCI::DeviceIdentifier const&);
     static ErrorOr<NonnullRefPtr<NetworkAdapter>> create(PCI::DeviceIdentifier const&);
@@ -32,7 +31,6 @@ public:
     virtual bool link_full_duplex() override;
     virtual i32 link_speed() override;
 
-    virtual StringView purpose() const override { return class_name(); }
     virtual StringView device_name() const override { return class_name(); }
     virtual Type adapter_type() const override { return Type::Ethernet; }
 
@@ -43,7 +41,7 @@ private:
 
     RTL8168NetworkAdapter(PCI::DeviceIdentifier const&, u8 irq, NonnullOwnPtr<IOWindow> registers_io_window, NonnullOwnPtr<KString>);
 
-    virtual bool handle_irq(RegisterState const&) override;
+    virtual bool handle_irq(RegisterState const&);
     virtual StringView class_name() const override { return "RTL8168NetworkAdapter"sv; }
 
     bool determine_supported_version() const;
@@ -212,5 +210,6 @@ private:
     bool m_link_up { false };
     EntropySource m_entropy_source;
     WaitQueue m_wait_queue;
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 }

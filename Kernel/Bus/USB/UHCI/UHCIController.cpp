@@ -77,7 +77,7 @@ ErrorOr<void> UHCIController::initialize()
 {
     dmesgln_pci(*this, "Controller found {} @ {}", PCI::get_hardware_id(device_identifier()), device_identifier().address());
     dmesgln_pci(*this, "I/O base {}", m_registers_io_window);
-    dmesgln_pci(*this, "Interrupt line: {}", interrupt_number());
+    dmesgln_pci(*this, "Interrupt line: {}", m_interrupt_handler->interrupt_number());
 
     TRY(spawn_async_poll_process());
     TRY(spawn_port_process());
@@ -88,9 +88,10 @@ ErrorOr<void> UHCIController::initialize()
 
 UNMAP_AFTER_INIT UHCIController::UHCIController(PCI::DeviceIdentifier const& pci_device_identifier, NonnullOwnPtr<IOWindow> registers_io_window)
     : PCI::Device(const_cast<PCI::DeviceIdentifier&>(pci_device_identifier))
-    , IRQHandler(pci_device_identifier.interrupt_line().value())
     , m_registers_io_window(move(registers_io_window))
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        pci_device_identifier.interrupt_line().value(), [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "UHCI"sv));
 }
 
 UNMAP_AFTER_INIT UHCIController::~UHCIController() = default;
@@ -610,7 +611,7 @@ ErrorOr<void> UHCIController::spawn_async_poll_process()
                         for (auto td = qh->get_first_td(); td != nullptr && !td->active(); td = td->next_td()) {
                             if (td->next_td() == nullptr) { // Finished QH
                                 handle->transfer->invoke_async_callback();
-                                qh->reinitialize(); // Set the QH to be active again
+                                qh->reinitialize();         // Set the QH to be active again
                             }
                         }
                     }

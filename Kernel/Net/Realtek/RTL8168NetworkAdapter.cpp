@@ -247,11 +247,13 @@ bool RTL8168NetworkAdapter::determine_supported_version() const
 UNMAP_AFTER_INIT RTL8168NetworkAdapter::RTL8168NetworkAdapter(PCI::DeviceIdentifier const& device_identifier, u8 irq, NonnullOwnPtr<IOWindow> registers_io_window, NonnullOwnPtr<KString> interface_name)
     : NetworkAdapter(move(interface_name))
     , PCI::Device(device_identifier)
-    , IRQHandler(irq)
     , m_registers_io_window(move(registers_io_window))
     , m_rx_descriptors_region(MM.allocate_contiguous_kernel_region(Memory::page_round_up(sizeof(TXDescriptor) * (number_of_rx_descriptors + 1)).release_value_but_fixme_should_propagate_errors(), "RTL8168 RX"sv, Memory::Region::Access::ReadWrite).release_value())
     , m_tx_descriptors_region(MM.allocate_contiguous_kernel_region(Memory::page_round_up(sizeof(RXDescriptor) * (number_of_tx_descriptors + 1)).release_value_but_fixme_should_propagate_errors(), "RTL8168 TX"sv, Memory::Region::Access::ReadWrite).release_value())
+
 {
+    m_interrupt_handler = adopt_ref_if_nonnull(new IRQHandler(
+        irq, [this](RegisterState const& reg) -> bool { return handle_irq(reg); }, "RTL8168NetworkAdapter"sv));
     dmesgln_pci(*this, "Found @ {}", device_identifier.address());
     dmesgln_pci(*this, "I/O port base: {}", m_registers_io_window);
 }
@@ -357,7 +359,7 @@ void RTL8168NetworkAdapter::startup()
     initialize_tx_descriptors();
 
     // register irq
-    enable_irq();
+    m_interrupt_handler->enable_irq();
 
     // version specific phy configuration
     configure_phy();
@@ -1666,7 +1668,7 @@ StringView RTL8168NetworkAdapter::possible_device_name()
     case ChipVersion::Version19:
         return "RTL8168F/8111F"sv; // 35, 36
     case ChipVersion::Version20:
-        return "RTL8411"sv; // 38
+        return "RTL8411"sv;        // 38
     case ChipVersion::Version21:
     case ChipVersion::Version22:
         return "RTL8168G/8111G"sv; // 40, 41, 42
@@ -1678,7 +1680,7 @@ StringView RTL8168NetworkAdapter::possible_device_name()
     case ChipVersion::Version25:
         return "RTL8168GU/8111GU"sv; // ???
     case ChipVersion::Version26:
-        return "RTL8411B"sv; // 44
+        return "RTL8411B"sv;         // 44
     case ChipVersion::Version29:
     case ChipVersion::Version30:
         return "RTL8168H/8111H"sv; // 45, 46

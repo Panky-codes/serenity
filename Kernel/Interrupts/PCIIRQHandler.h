@@ -32,21 +32,22 @@ public:
     virtual bool eoi() override;
 
     virtual HandlerType type() const override { return HandlerType::IRQHandler; }
-    virtual StringView purpose() const override { return "IRQ Handler"sv; }
+    virtual StringView purpose() const override { return m_purpose; }
     virtual StringView controller() const override { return m_responsible_irq_controller.is_null() ? "PCI-MSI"sv : m_responsible_irq_controller->model(); }
 
     virtual size_t sharing_devices_count() const override { return 0; }
     virtual bool is_shared_handler() const override { return false; }
     void set_shared_with_others(bool status) { m_shared_with_others = status; }
-    explicit PCIIRQHandler(PCI::Device& device, u8 irq);
-    explicit PCIIRQHandler(PCI::Device& device, u8 irq, CallbackType callback);
+    PCIIRQHandler(PCI::Device& device, u8 irq);
+    PCIIRQHandler(PCI::Device& device, u8 irq, CallbackType callback, StringView purpose);
 
 private:
     bool m_shared_with_others { false };
     bool m_enabled { false };
     LockRefPtr<IRQController> m_responsible_irq_controller { nullptr };
     PCI::Device& device;
-    CallbackType m_callback{nullptr};
+    CallbackType m_callback { nullptr };
+    StringView m_purpose { "IRQ Handler"sv };
 };
 
 }

@@ -25,14 +25,12 @@ class AsyncBlockDeviceRequest;
 
 class AHCIController;
 class AHCIPort;
-class AHCIInterruptHandler final : public IRQHandler {
+class AHCIInterruptHandler final {
     friend class AHCIController;
 
 public:
     static ErrorOr<NonnullOwnPtr<AHCIInterruptHandler>> create(AHCIController&, u8 irq, AHCI::MaskedBitField taken_ports);
-    virtual ~AHCIInterruptHandler() override;
-
-    virtual StringView purpose() const override { return "SATA IRQ Handler"sv; }
+    virtual ~AHCIInterruptHandler();
 
     bool is_responsible_for_port_index(u32 port_index) const { return m_taken_ports.is_set_at(port_index); }
 
@@ -42,7 +40,7 @@ private:
     void allocate_resources_and_initialize_ports();
 
     //^ IRQHandler
-    virtual bool handle_irq(RegisterState const&) override;
+    virtual bool handle_irq(RegisterState const&);
 
     enum class Direction : u8 {
         Read,
@@ -55,5 +53,6 @@ private:
     NonnullLockRefPtr<AHCIController> m_parent_controller;
     AHCI::MaskedBitField m_taken_ports;
     AHCI::MaskedBitField m_pending_ports_interrupts;
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 }

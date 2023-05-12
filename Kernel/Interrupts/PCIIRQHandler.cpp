@@ -24,10 +24,11 @@ PCIIRQHandler::PCIIRQHandler(PCI::Device& device, u8 irq)
         disable_irq();
 }
 
-PCIIRQHandler::PCIIRQHandler(PCI::Device& device, u8 irq, CallbackType callback)
+PCIIRQHandler::PCIIRQHandler(PCI::Device& device, u8 irq, CallbackType callback, StringView purpose)
     : GenericInterruptHandler(irq)
     , device(device)
     , m_callback(move(callback))
+    , m_purpose(purpose)
 {
     auto type = device.get_interrupt_type();
 

@@ -19,6 +19,14 @@ IRQHandler::IRQHandler(u8 irq)
         disable_irq();
 }
 
+IRQHandler::IRQHandler(u8 irq, IRQHandler::CallbackType callback, StringView purpose)
+    : GenericInterruptHandler(irq)
+    , m_responsible_irq_controller(InterruptManagement::the().get_responsible_irq_controller(irq))
+    , m_callback(move(callback))
+    , m_purpose(purpose)
+{
+}
+
 IRQHandler::~IRQHandler() = default;
 
 bool IRQHandler::eoi()

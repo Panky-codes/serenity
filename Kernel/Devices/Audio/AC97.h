@@ -23,8 +23,7 @@ namespace Kernel {
 
 class AC97 final
     : public AudioController
-    , public PCI::Device
-    , public IRQHandler {
+    , public PCI::Device {
 
 public:
     static ErrorOr<bool> probe(PCI::DeviceIdentifier const&);
@@ -34,9 +33,6 @@ public:
 
     // ^PCI::Device
     virtual StringView device_name() const override { return "AC97"sv; }
-
-    // ^IRQHandler
-    virtual StringView purpose() const override { return "AC97"sv; }
 
 private:
     enum NativeAudioMixerRegister : u8 {
@@ -159,7 +155,7 @@ private:
     AC97(PCI::DeviceIdentifier const&, NonnullOwnPtr<AC97Channel> pcm_out_channel, NonnullOwnPtr<IOWindow> mixer_io_window, NonnullOwnPtr<IOWindow> bus_io_window);
 
     // ^IRQHandler
-    virtual bool handle_irq(RegisterState const&) override;
+    bool handle_irq(RegisterState const&);
 
     void set_master_output_volume(u8, u8, Muted);
     ErrorOr<void> set_pcm_output_sample_rate(u32);
@@ -187,6 +183,7 @@ private:
     u32 m_sample_rate { 0 };
     bool m_variable_rate_pcm_supported { false };
     RefPtr<AudioChannel> m_audio_channel;
+    RefPtr<IRQHandler> m_interrupt_handler;
 };
 
 }
